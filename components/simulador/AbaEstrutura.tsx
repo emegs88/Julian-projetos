@@ -27,15 +27,24 @@ export function AbaEstrutura() {
 
   const handleCalculate = () => {
     if (estrutura.credito <= 0 || estrutura.prazoTotal <= 0) {
+      setCalculos(null);
       return;
     }
-    const calculos = calcularTodos(estrutura, lotes, garantia, veiculos, cotasAutomoveis);
-    setCalculos(calculos);
+    try {
+      const calculos = calcularTodos(estrutura, lotes, garantia, veiculos, cotasAutomoveis);
+      setCalculos(calculos);
+    } catch (error) {
+      console.error('Erro ao calcular:', error);
+      setCalculos(null);
+    }
   };
 
   useEffect(() => {
     if (estrutura.credito > 0 && estrutura.prazoTotal > 0) {
       handleCalculate();
+    } else {
+      // Limpar cálculos se dados insuficientes
+      setCalculos(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [estrutura, lotes, garantia, veiculos, cotasAutomoveis]);

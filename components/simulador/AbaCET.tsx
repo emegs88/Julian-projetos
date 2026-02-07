@@ -12,8 +12,15 @@ export function AbaCET() {
 
   useEffect(() => {
     if (estrutura.credito > 0 && estrutura.prazoTotal > 0) {
-      const resultado = calcularTodos(estrutura, lotes, garantia, veiculos, cotasAutomoveis);
-      setCalculos(resultado);
+      try {
+        const resultado = calcularTodos(estrutura, lotes, garantia, veiculos, cotasAutomoveis);
+        setCalculos(resultado);
+      } catch (error) {
+        console.error('Erro ao calcular CET:', error);
+        setCalculos(null);
+      }
+    } else {
+      setCalculos(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [estrutura, lotes, garantia, veiculos, cotasAutomoveis]);
