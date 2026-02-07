@@ -1,8 +1,8 @@
 # 📤 Como Subir para o GitHub
 
-## ✅ Commit Realizado
+## ✅ Repositório Inicializado
 
-O código foi commitado localmente. Agora você precisa:
+O repositório Git foi inicializado e o código foi commitado localmente. Agora você precisa:
 
 ## 🔗 Opção 1: Criar Repositório Novo no GitHub
 
