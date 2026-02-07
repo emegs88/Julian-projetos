@@ -11,6 +11,7 @@ import { AbaEstrutura } from '@/components/simulador/AbaEstrutura';
 import { AbaGarantias } from '@/components/simulador/AbaGarantias';
 import { AbaCET } from '@/components/simulador/AbaCET';
 import { AbaGraficos } from '@/components/simulador/AbaGraficos';
+import { TabErrorBoundary } from '@/components/simulador/TabErrorBoundary';
 import {
   Building2,
   Calculator,
@@ -38,8 +39,10 @@ export default function SimuladorPage() {
 
   const handleTabChange = useCallback((tabId: string) => {
     console.log('Tab clicked:', tabId);
+    console.log('Current activeTab before change:', activeTab);
     setActiveTab(tabId);
-  }, []);
+    console.log('activeTab should be:', tabId);
+  }, [activeTab]);
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
@@ -82,14 +85,52 @@ export default function SimuladorPage() {
 
           {/* Tab Content */}
           <div className="min-h-[400px]">
-            {activeTab === 'empreendimento' && <AbaEmpreendimento />}
-            {activeTab === 'cotas' && <AbaCotas />}
-            {activeTab === 'veiculos' && <AbaVeiculos />}
-            {activeTab === 'cotas-automoveis' && <AbaCotasAutomoveis />}
-            {activeTab === 'estrutura' && <AbaEstrutura />}
-            {activeTab === 'garantias' && <AbaGarantias />}
-            {activeTab === 'cet' && <AbaCET />}
-            {activeTab === 'graficos' && <AbaGraficos />}
+            {activeTab === 'empreendimento' && (
+              <TabErrorBoundary tabName="Empreendimento">
+                <AbaEmpreendimento />
+              </TabErrorBoundary>
+            )}
+            {activeTab === 'cotas' && (
+              <TabErrorBoundary tabName="Cotas">
+                <AbaCotas />
+              </TabErrorBoundary>
+            )}
+            {activeTab === 'veiculos' && (
+              <TabErrorBoundary tabName="Veículos">
+                <AbaVeiculos />
+              </TabErrorBoundary>
+            )}
+            {activeTab === 'cotas-automoveis' && (
+              <TabErrorBoundary tabName="Cotas Automóveis">
+                <AbaCotasAutomoveis />
+              </TabErrorBoundary>
+            )}
+            {activeTab === 'estrutura' && (
+              <TabErrorBoundary tabName="Estrutura">
+                <AbaEstrutura />
+              </TabErrorBoundary>
+            )}
+            {activeTab === 'garantias' && (
+              <TabErrorBoundary tabName="Garantias">
+                <AbaGarantias />
+              </TabErrorBoundary>
+            )}
+            {activeTab === 'cet' && (
+              <TabErrorBoundary tabName="Custo Efetivo">
+                <AbaCET />
+              </TabErrorBoundary>
+            )}
+            {activeTab === 'graficos' && (
+              <TabErrorBoundary tabName="Gráficos">
+                <AbaGraficos />
+              </TabErrorBoundary>
+            )}
+            {/* Debug: Mostrar aba ativa */}
+            {process.env.NODE_ENV === 'development' && (
+              <div className="mt-4 p-2 bg-yellow-100 text-xs text-gray-600 rounded">
+                Debug: Aba ativa = {activeTab}
+              </div>
+            )}
           </div>
         </div>
       </div>
