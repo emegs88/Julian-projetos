@@ -57,8 +57,14 @@ export interface Veiculo {
   ano: number;
   placa?: string;
   chassi?: string;
-  fipe: number; // Valor FIPE
-  valorGarantia: number; // FIPE * 1.3 (130%)
+  fipe: number; // Valor FIPE atual (pode ser fipeAtual ou fipeBase)
+  fipeBase: number; // Valor base do catálogo (sempre disponível)
+  fipeAtual?: number; // Valor FIPE da API (opcional)
+  fonteFipe: 'CATALOGO' | 'API' | 'MANUAL'; // Fonte do valor FIPE
+  mesReferencia?: string; // Mês de referência da FIPE (se da API)
+  codigoFipe?: string; // Código FIPE resolvido
+  valorGarantia: number; // (fipeAtual ?? fipeBase) * multiplicador
+  multiplicador: number; // Multiplicador padrão 1.3
   observacoes?: string;
   selecionado?: boolean;
 }

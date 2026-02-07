@@ -15,6 +15,7 @@ import { PoolGlobal } from './PoolGlobal';
 import { InputPercent } from '@/components/ui/InputPercent';
 import { Modal } from '@/components/ui/Modal';
 import { useEffect } from 'react';
+import { veiculosBase, getValorBase } from '@/data/veiculosBase';
 
 export function AbaVeiculos() {
   const {
@@ -44,27 +45,35 @@ export function AbaVeiculos() {
 
   // Carregar veículos do cliente ao abrir a aba
   useEffect(() => {
-    // Primeiro tentar carregar do cache
-    if (typeof window !== 'undefined') {
-      import('@/lib/fipe/localStorageCache').then(({ getFipeCache }) => {
-        const cache = getFipeCache();
-        if (Object.keys(cache).length > 0) {
-          // Atualizar veículos com valores do cache
-          Object.entries(cache).forEach(([veiculoId, entry]) => {
-            const veiculo = veiculos.find(v => v.id === veiculoId);
-            if (veiculo) {
-              updateVeiculo(veiculoId, {
-                fipe: entry.fipe,
-                valorGarantia: entry.garantia,
-                observacoes: `${veiculo.observacoes?.split(' - ')[0] || veiculo.modelo} - Cache ${entry.mesReferencia}`,
-              });
-            }
-          });
-        }
+    // Inicializar veículos do catálogo se não existirem
+    if (veiculos.length === 0) {
+      veiculosBase.forEach((vBase) => {
+        const partes = vBase.modelo.split(' ');
+        const marca = partes[0] || '';
+        const modelo = partes.slice(1).join(' ') || vBase.modelo;
+        const multiplicador = 1.3;
+        const garantia = vBase.valorBase * multiplicador;
+        
+        addVeiculo({
+          id: vBase.id,
+          marca,
+          modelo,
+          ano: vBase.ano,
+          placa: '',
+          chassi: '',
+          fipe: vBase.valorBase, // Inicializar com catálogo
+          fipeBase: vBase.valorBase,
+          fipeAtual: undefined,
+          fonteFipe: 'CATALOGO',
+          multiplicador,
+          valorGarantia: garantia,
+          observacoes: `${vBase.tipo} - CATÁLOGO`,
+          selecionado: false,
+        });
       });
     }
     
-    // Depois carregar da API
+    // Depois tentar atualizar pela API
     carregarVeiculosCliente(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -88,18 +97,33 @@ export function AbaVeiculos() {
       setVeiculosCliente(data);
       
       // Converter para formato Veiculo e adicionar ao store se não existirem
-      const novosVeiculos: Veiculo[] = data.map((v: any) => ({
-        id: v.id,
-        marca: v.nome.split(' ')[0] || '',
-        modelo: v.nome.split(' ').slice(1).join(' ') || v.nome,
-        ano: v.ano,
-        placa: '',
-        chassi: '',
-        fipe: v.fipe,
-        valorGarantia: v.garantia,
-        observacoes: `${v.tipo} - ${v.fonte === 'brasilapi' ? `FIPE ${v.mesReferencia}` : v.fonte === 'cache' ? `Cache ${v.mesReferencia}` : 'Manual'}`,
-        selecionado: false,
-      }));
+      const novosVeiculos: Veiculo[] = data.map((v: any) => {
+        const fipeBase = getValorBase(v.id) || v.fipe || 0;
+        const fipeAtual = v.fonte === 'brasilapi' || v.fonte === 'cache' ? v.fipe : undefined;
+        const fipe = fipeAtual ?? fipeBase; // Usar atual se existir, senão base
+        const fonteFipe = fipeAtual ? 'API' : 'CATALOGO';
+        const multiplicador = v.multiplicador || 1.3;
+        const garantia = fipe * multiplicador;
+        
+        return {
+          id: v.id,
+          marca: v.nome.split(' ')[0] || '',
+          modelo: v.nome.split(' ').slice(1).join(' ') || v.nome,
+          ano: v.ano,
+          placa: '',
+          chassi: '',
+          fipe,
+          fipeBase,
+          fipeAtual,
+          fonteFipe,
+          mesReferencia: v.mesReferencia,
+          codigoFipe: v.codigoFipe,
+          multiplicador,
+          valorGarantia: garantia,
+          observacoes: `${v.tipo} - ${fonteFipe}${v.mesReferencia ? ` ${v.mesReferencia}` : ''}`,
+          selecionado: false,
+        };
+      });
 
       // Adicionar apenas veículos que não existem
       novosVeiculos.forEach((novo) => {
@@ -204,11 +228,24 @@ export function AbaVeiculos() {
         // Atualizar veículo no store
         const veiculoExistente = veiculos.find((veic) => veic.id === resultado.id);
         
+        const fipeBase = resultado.fipeBase || getValorBase(resultado.id) || 0;
+        const fipeAtual = resultado.fipeAtual;
+        const fipe = fipeAtual ?? fipeBase; // Usar atual se existir, senão base
+        const fonteFipe = resultado.fonteFipe || (fipeAtual ? 'API' : 'CATALOGO');
+        const multiplicador = multiplicadorFIPE;
+        const garantia = resultado.garantia || (fipe * multiplicador);
+        
         if (veiculoExistente) {
           updateVeiculo(resultado.id, {
-            fipe: resultado.fipeAtual || 0,
-            valorGarantia: resultado.garantia || 0,
-            observacoes: `API ${resultado.mesReferencia || ''}`.trim(),
+            fipe,
+            fipeBase,
+            fipeAtual,
+            fonteFipe,
+            mesReferencia: resultado.mesReferencia,
+            codigoFipe: resultado.codigoFipe,
+            multiplicador,
+            valorGarantia: garantia,
+            observacoes: `${fonteFipe}${resultado.mesReferencia ? ` ${resultado.mesReferencia}` : ''}`.trim(),
           });
         } else {
           // Adicionar novo veículo
@@ -222,9 +259,15 @@ export function AbaVeiculos() {
               ano: veiculoCliente.ano,
               placa: '',
               chassi: '',
-              fipe: resultado.fipeAtual || 0,
-              valorGarantia: resultado.garantia || 0,
-              observacoes: `API ${resultado.mesReferencia || ''}`.trim(),
+              fipe,
+              fipeBase,
+              fipeAtual,
+              fonteFipe,
+              mesReferencia: resultado.mesReferencia,
+              codigoFipe: resultado.codigoFipe,
+              multiplicador,
+              valorGarantia: garantia,
+              observacoes: `${fonteFipe}${resultado.mesReferencia ? ` ${resultado.mesReferencia}` : ''}`.trim(),
               selecionado: false,
             });
           }
@@ -239,11 +282,16 @@ export function AbaVeiculos() {
         setShowModalResolver(true);
       }
 
-      // Mensagem de resultado
-      if (erros > 0) {
-        alert(`⚠️ FIPE atualizada: ${atualizados} sucesso(s) e ${erros} erro(s).`);
+      // Mensagem de resultado (amigável, sem assustar)
+      const mantidosCatalogo = data.resultados.filter((r: any) => r.fonteFipe === 'CATALOGO').length;
+      const atualizadosAPI = data.resultados.filter((r: any) => r.fonteFipe === 'API').length;
+      
+      if (atualizadosAPI > 0 && mantidosCatalogo > 0) {
+        alert(`✅ FIPE atualizada: ${atualizadosAPI} veículo(s) atualizado(s) pela API e ${mantidosCatalogo} mantido(s) pelo catálogo.`);
+      } else if (atualizadosAPI > 0) {
+        alert(`✅ FIPE atualizada com sucesso! ${atualizadosAPI} veículo(s) atualizado(s) pela API.`);
       } else {
-        alert(`✅ FIPE atualizada com sucesso! ${atualizados} veículo(s) atualizado(s).`);
+        alert(`ℹ️ FIPE mantida pelo catálogo para todos os veículos.`);
       }
     } catch (error: any) {
       console.error('Erro ao atualizar FIPE PRO:', error);
@@ -308,6 +356,8 @@ export function AbaVeiculos() {
         veiculoInfo = watchlist.find((v: any) => v.codigoFipe === codigoFipeInput);
       }
 
+      const fipeBase = fipeAtual || 0; // Se não tiver base, usar o atual
+      const multiplicador = multiplicadorFIPE;
       const novoVeiculo: Veiculo = {
         id: `veiculo-${Date.now()}`,
         marca: veiculoInfo?.marca || '',
@@ -316,6 +366,11 @@ export function AbaVeiculos() {
         placa: '',
         chassi: '',
         fipe: fipeAtual,
+        fipeBase,
+        fipeAtual: fipeAtual,
+        fonteFipe: 'API',
+        mesReferencia,
+        multiplicador,
         valorGarantia: garantia,
         observacoes: `FIPE ${mesReferencia}${veiculoInfo?.apelido ? ` - ${veiculoInfo.apelido}` : ''}`,
         selecionado: false,
@@ -348,6 +403,8 @@ export function AbaVeiculos() {
       });
       const { garantia, fipe } = await response.json();
 
+      const fipeBase = fipe || 0;
+      const multiplicador = multiplicadorFIPE;
       const novoVeiculo: Veiculo = {
         id: `veiculo-${Date.now()}`,
         marca: veiculoFIPE.marca,
@@ -355,7 +412,11 @@ export function AbaVeiculos() {
         ano: veiculoFIPE.ano,
         placa: '',
         chassi: '',
-        fipe: fipe,
+        fipe,
+        fipeBase,
+        fipeAtual: fipe,
+        fonteFipe: 'API',
+        multiplicador,
         valorGarantia: garantia,
         observacoes: veiculoFIPE.categoria || '',
         selecionado: false,
@@ -382,9 +443,13 @@ export function AbaVeiculos() {
 
     const updates: Partial<Veiculo> = { [field]: value };
 
-    // Recalcular valorGarantia se FIPE mudou
-    if (field === 'fipe') {
-      updates.valorGarantia = (value || 0) * multiplicadorFIPE;
+    // Recalcular valorGarantia se FIPE ou multiplicador mudou
+    if (field === 'fipe' || field === 'multiplicador') {
+      const fipe = field === 'fipe' 
+        ? (value || veiculo.fipeBase || 0) 
+        : ((veiculo.fipeAtual ?? veiculo.fipeBase) || 0);
+      const mult = field === 'multiplicador' ? (value || 1.3) : (veiculo.multiplicador || 1.3);
+      updates.valorGarantia = fipe * mult;
     }
 
     updateVeiculo(id, updates);
@@ -587,15 +652,22 @@ export function AbaVeiculos() {
                           <td className="border border-gray-300 px-4 py-3">{veiculo.ano}</td>
                           <td className="border border-gray-300 px-4 py-3 text-right font-semibold">
                             {formatBRL(veiculo.fipe)}
-                            {veiculo.observacoes && (
-                              <span className="text-xs text-gray-500 block">
-                                {veiculo.observacoes.includes('FIPE') 
-                                  ? veiculo.observacoes.split('FIPE ')[1]?.split(' ')[0] || ''
-                                  : veiculo.observacoes.includes('Cache')
-                                  ? veiculo.observacoes.split('Cache ')[1]?.split(' ')[0] || ''
-                                  : 'Manual'}
+                            <div className="flex items-center justify-end gap-2 mt-1">
+                              <span className={`text-xs px-2 py-0.5 rounded ${
+                                veiculo.fonteFipe === 'API' 
+                                  ? 'bg-blue-100 text-blue-700 font-medium'
+                                  : veiculo.fonteFipe === 'CATALOGO'
+                                  ? 'bg-gray-100 text-gray-700 font-medium'
+                                  : 'bg-yellow-100 text-yellow-700 font-medium'
+                              }`}>
+                                {veiculo.fonteFipe || 'CATÁLOGO'}
                               </span>
-                            )}
+                              {veiculo.mesReferencia && (
+                                <span className="text-xs text-gray-500">
+                                  {veiculo.mesReferencia}
+                                </span>
+                              )}
+                            </div>
                           </td>
                           <td className="border border-gray-300 px-4 py-3 text-right font-bold text-green-700">
                             {formatBRL(veiculo.valorGarantia)}

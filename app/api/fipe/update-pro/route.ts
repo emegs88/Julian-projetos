@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { veiculosCliente } from '@/data/veiculosCliente';
+import { veiculosBase, getValorBase } from '@/data/veiculosBase';
 import { resolveCodigoFipe } from '@/lib/fipeResolver';
 import { parseBRLToNumber } from '@/lib/normalize';
 import {
@@ -13,7 +14,7 @@ const BRASIL_API_BASE = 'https://brasilapi.com.br/api/fipe';
 
 interface VehicleRow {
   id: string;
-  tipo: 'carros' | 'caminhoes' | 'maquinas';
+  tipo: 'carros' | 'caminhoes' | 'maquinas' | 'outros';
   marcaTexto: string;
   modeloTexto: string;
   ano: number;
@@ -29,8 +30,10 @@ interface VehicleRow {
 interface UpdateResult {
   id: string;
   ok: boolean;
-  fipeAtual?: number;
-  garantia?: number;
+  fipeBase: number; // Sempre presente (catálogo)
+  fipeAtual?: number; // Opcional (API)
+  fonteFipe: 'CATALOGO' | 'API' | 'MANUAL';
+  garantia: number; // (fipeAtual ?? fipeBase) * multiplicador
   codigoFipe?: string;
   mesReferencia?: string;
   erro?: string;
@@ -75,13 +78,17 @@ export async function POST(request: NextRequest) {
     for (let i = 0; i < vehicles.length; i++) {
       const veiculo = vehicles[i];
       
-      // Máquinas: manter manual
-      if (veiculo.tipo === 'maquinas') {
+      // Buscar valor base do catálogo
+      const fipeBase = getValorBase(veiculo.id) || veiculo.fipeAtual || 0;
+      
+      // Máquinas e outros: manter catálogo (não buscar FIPE)
+      if (veiculo.tipo === 'maquinas' || veiculo.tipo === 'outros') {
         resultados.push({
           id: veiculo.id,
           ok: true,
-          fipeAtual: veiculo.fipeAtual || 0,
-          garantia: (veiculo.fipeAtual || 0) * veiculo.multiplicador,
+          fipeBase,
+          fonteFipe: 'CATALOGO',
+          garantia: fipeBase * veiculo.multiplicador,
         });
         continue;
       }
@@ -101,7 +108,19 @@ export async function POST(request: NextRequest) {
         if (cachedCode) {
           codigoFipe = cachedCode.codigoFipe;
         } else {
-          // Resolver código FIPE automaticamente
+          // Resolver código FIPE automaticamente (apenas para carros e caminhoes)
+          if (veiculo.tipo !== 'carros' && veiculo.tipo !== 'caminhoes') {
+            // Não tentar resolver para outros tipos
+            resultados.push({
+              id: veiculo.id,
+              ok: true,
+              fipeBase,
+              fonteFipe: 'CATALOGO',
+              garantia: fipeBase * veiculo.multiplicador,
+            });
+            continue;
+          }
+          
           const resolveResult = await resolveCodigoFipe({
             tipo: veiculo.tipo,
             marcaTexto: veiculo.marcaTexto,
@@ -110,10 +129,14 @@ export async function POST(request: NextRequest) {
           });
 
           if ('erro' in resolveResult) {
+            // Se não conseguir resolver, usar catálogo como fallback
             resultados.push({
               id: veiculo.id,
-              ok: false,
-              erro: resolveResult.erro,
+              ok: true, // Não é erro grave, é fallback planejado
+              fipeBase,
+              fonteFipe: 'CATALOGO',
+              garantia: fipeBase * veiculo.multiplicador,
+              erro: resolveResult.erro, // Para mostrar sugestões se necessário
               sugestoes: resolveResult.sugestoes,
             });
             continue;
@@ -173,37 +196,27 @@ export async function POST(request: NextRequest) {
         } catch (error: any) {
           console.error(`Erro ao buscar FIPE para ${veiculo.id}:`, error);
           
-          // Fallback: usar valor manual se disponível
-          if (veiculo.fipeAtual && veiculo.fipeAtual > 0) {
-            fipe = veiculo.fipeAtual;
-            mesReferencia = '';
-            resultados.push({
-              id: veiculo.id,
-              ok: true,
-              fipeAtual: fipe,
-              garantia: fipe * veiculo.multiplicador,
-              codigoFipe,
-              mesReferencia,
-            });
-            continue;
-          } else {
-            resultados.push({
-              id: veiculo.id,
-              ok: false,
-              erro: error.message || 'Erro ao buscar FIPE',
-            });
-            continue;
-          }
+          // Fallback: usar catálogo (sempre disponível)
+          resultados.push({
+            id: veiculo.id,
+            ok: true, // Não é erro grave, é fallback planejado
+            fipeBase,
+            fonteFipe: 'CATALOGO',
+            garantia: fipeBase * veiculo.multiplicador,
+          });
+          continue;
         }
       }
 
-      // Calcular garantia
+      // Calcular garantia usando FIPE da API
       const garantia = fipe * veiculo.multiplicador;
 
       resultados.push({
         id: veiculo.id,
         ok: true,
+        fipeBase,
         fipeAtual: fipe,
+        fonteFipe: 'API',
         garantia,
         codigoFipe,
         mesReferencia,
