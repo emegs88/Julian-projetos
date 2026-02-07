@@ -136,50 +136,6 @@ function newtonRaphson(cashFlows: number[]): IRRResult | null {
   
   // Não convergiu com nenhum chute inicial
   return null;
-  
-  for (let i = 0; i < MAX_ITERATIONS; i++) {
-    const npv = calculateNPV(cashFlows, rate);
-    const derivative = calculateNPVDerivative(cashFlows, rate);
-    
-    // Verificar convergência
-    if (Math.abs(npv) < TOLERANCE) {
-      return {
-        rate,
-        rateAnnual: Math.pow(1 + rate, 12) - 1,
-        converged: true,
-        iterations: i + 1,
-        method: 'newton-raphson',
-      };
-    }
-    
-    // Verificar se a derivada é muito pequena (pode causar divisão por zero)
-    if (Math.abs(derivative) < TOLERANCE) {
-      return null; // Fallback para bisseção
-    }
-    
-    // Verificar se há NaN ou Infinity
-    if (!isFinite(npv) || !isFinite(derivative)) {
-      return null;
-    }
-    
-    // Atualizar taxa
-    const newRate = rate - npv / derivative;
-    
-    // Verificar se saiu do intervalo razoável
-    if (newRate < MIN_RATE || newRate > MAX_RATE || !isFinite(newRate)) {
-      return null;
-    }
-    
-    // Verificar se não está progredindo
-    if (Math.abs(newRate - rate) < TOLERANCE && Math.abs(npv) > TOLERANCE) {
-      return null;
-    }
-    
-    rate = newRate;
-  }
-  
-  // Não convergiu
-  return null;
 }
 
 /**
