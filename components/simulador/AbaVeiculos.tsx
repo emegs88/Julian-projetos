@@ -45,9 +45,10 @@ export function AbaVeiculos() {
 
   // Carregar veículos do cliente ao abrir a aba
   useEffect(() => {
-    // Inicializar veículos do catálogo se não existirem
-    if (veiculos.length === 0) {
-      veiculosBase.forEach((vBase) => {
+    // Inicializar veículos do catálogo apenas se não existirem no store
+    veiculosBase.forEach((vBase) => {
+      const existe = veiculos.find(v => v.id === vBase.id);
+      if (!existe) {
         const partes = vBase.modelo.split(' ');
         const marca = partes[0] || '';
         const modelo = partes.slice(1).join(' ') || vBase.modelo;
@@ -70,13 +71,18 @@ export function AbaVeiculos() {
           observacoes: `${vBase.tipo} - CATÁLOGO`,
           selecionado: false,
         });
-      });
-    }
+      }
+    });
     
-    // Depois tentar atualizar pela API
-    carregarVeiculosCliente(true);
+    // Depois tentar atualizar pela API (apenas atualizar, não adicionar duplicados)
+    // Usar timeout para evitar race condition
+    const timeout = setTimeout(() => {
+      carregarVeiculosCliente(true);
+    }, 100);
+    
+    return () => clearTimeout(timeout);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, []); // Executar apenas uma vez ao montar
 
   // Carregar veículos do cliente da API
   const carregarVeiculosCliente = async (buscarCodigos: boolean = true) => {
@@ -125,16 +131,33 @@ export function AbaVeiculos() {
         };
       });
 
-      // Adicionar apenas veículos que não existem
+      // Atualizar veículos existentes ou adicionar apenas se não existirem
+      // Usar o estado atualizado do store para evitar duplicação
       novosVeiculos.forEach((novo) => {
+        // Verificar no store atual (não no estado antigo)
         const existe = veiculos.find((v) => v.id === novo.id);
         if (!existe) {
+          // Adicionar apenas se realmente não existir
           addVeiculo(novo);
         } else {
-          // Atualizar FIPE e garantia dos existentes apenas se mudou
-          if (existe.fipe !== novo.fipe || existe.valorGarantia !== novo.valorGarantia) {
+          // Sempre atualizar com dados mais recentes (mesmo que não mudou)
+          // Mas verificar se realmente precisa atualizar para evitar loops
+          const precisaAtualizar = 
+            existe.fipe !== novo.fipe ||
+            existe.fipeBase !== novo.fipeBase ||
+            existe.fipeAtual !== novo.fipeAtual ||
+            existe.fonteFipe !== novo.fonteFipe ||
+            existe.valorGarantia !== novo.valorGarantia;
+          
+          if (precisaAtualizar) {
             updateVeiculo(novo.id, {
               fipe: novo.fipe,
+              fipeBase: novo.fipeBase,
+              fipeAtual: novo.fipeAtual,
+              fonteFipe: novo.fonteFipe,
+              mesReferencia: novo.mesReferencia,
+              codigoFipe: novo.codigoFipe,
+              multiplicador: novo.multiplicador,
               valorGarantia: novo.valorGarantia,
               observacoes: novo.observacoes,
             });
@@ -154,37 +177,27 @@ export function AbaVeiculos() {
     setProgressFIPE({ atual: 0, total: veiculosCliente.length || veiculos.length });
     
     try {
-      // Preparar lista de veículos para a API
-      const vehiclesList = veiculosCliente.length > 0 
-        ? veiculosCliente.map((v: any) => {
-            const partes = v.nome.split(' ');
-            return {
-              id: v.id,
-              tipo: v.tipo === 'maquina' ? 'maquinas' : (v.tipo === 'caminhao' ? 'caminhoes' : 'carros'),
-              marcaTexto: partes[0] || '',
-              modeloTexto: partes.slice(1).join(' ') || v.nome,
-              ano: v.ano,
-              fipeAtual: v.fipe || v.fipeManual,
-              codigoFipe: v.codigoFipe,
-              fonte: v.fipeManual ? 'manual' : 'api',
-              multiplicador: v.multiplicador || 1.3,
-              incluir: garantia.veiculosSelecionados.includes(v.id),
-            };
-          })
-        : veiculos.map((v) => {
-            return {
-              id: v.id,
-              tipo: 'carros', // Default, pode melhorar depois
-              marcaTexto: v.marca,
-              modeloTexto: v.modelo,
-              ano: v.ano,
-              fipeAtual: v.fipe,
-              codigoFipe: undefined,
-              fonte: 'api',
-              multiplicador: multiplicadorFIPE,
-              incluir: garantia.veiculosSelecionados.includes(v.id),
-            };
-          });
+      // Preparar lista de veículos para a API (usar veículos do store, não duplicar)
+      const vehiclesList = veiculos.map((v) => {
+        // Determinar tipo baseado no ID ou modelo
+        let tipo: 'carros' | 'caminhoes' | 'maquinas' | 'outros' = 'carros';
+        if (v.id.startsWith('TRK')) tipo = 'caminhoes';
+        else if (v.id.startsWith('EQP') || v.id.startsWith('EMP')) tipo = 'maquinas';
+        else if (v.id.startsWith('BAU') || v.id.startsWith('PLT')) tipo = 'outros';
+        
+        return {
+          id: v.id,
+          tipo,
+          marcaTexto: v.marca,
+          modeloTexto: v.modelo,
+          ano: v.ano,
+          fipeAtual: v.fipeAtual ?? v.fipeBase, // Usar atual se existir, senão base
+          codigoFipe: v.codigoFipe,
+          fonte: v.fonteFipe === 'API' ? 'api' : 'manual',
+          multiplicador: v.multiplicador || multiplicadorFIPE,
+          incluir: garantia.veiculosSelecionados.includes(v.id),
+        };
+      });
 
       // Chamar API PRO
       const response = await fetch('/api/fipe/update-pro', {
