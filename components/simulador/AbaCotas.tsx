@@ -67,6 +67,12 @@ export function AbaCotas() {
         credito: totais.credito,
         parcelaMensal: totais.parcelaMensal,
       });
+      // Feedback visual
+      setTimeout(() => {
+        alert(`✅ Valores aplicados à estrutura:\n\n• Crédito: ${formatBRL(totais.credito)}\n• Parcela Mensal: ${formatBRL(totais.parcelaMensal)}\n\nAcesse a aba "Estrutura" para completar os demais campos.`);
+      }, 100);
+    } else {
+      alert('⚠️ Adicione cotas e preencha os valores de crédito primeiro.');
     }
   };
 
