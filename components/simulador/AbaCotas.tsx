@@ -8,7 +8,7 @@ import { InputMoney } from '@/components/ui/InputMoney';
 import { Button } from '@/components/ui/Button';
 import { Alert } from '@/components/ui/Alert';
 import { Toggle } from '@/components/ui/Toggle';
-import { Plus, Trash2, Calculator } from 'lucide-react';
+import { Plus, Trash2, Calculator, X, CreditCard } from 'lucide-react';
 import { Cota } from '@/types';
 import { formatBRL } from '@/lib/utils';
 
@@ -70,6 +70,14 @@ export function AbaCotas() {
     }
   };
 
+  // Limpar todas as cotas
+  const handleLimparTudo = () => {
+    if (confirm('Tem certeza que deseja limpar todas as cotas?')) {
+      setCotas([]);
+      setEditingId(null);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <Card title="Gerenciamento de Cotas de Consórcio">
@@ -89,16 +97,29 @@ export function AbaCotas() {
 
           {usarMultiplasCotas && (
             <>
-              <div className="flex gap-4">
-            <Button onClick={handleAddCota} size="sm" className="font-medium">
-              <Plus className="w-4 h-4 mr-2" />
-              Adicionar Cota
-            </Button>
-                {totais.credito > 0 && (
-                  <Button onClick={handleAplicarTotais} variant="primary" size="sm">
-                    <Calculator className="w-4 h-4 mr-2" />
-                    Aplicar Totais à Estrutura
-                  </Button>
+              <div className="flex gap-4 flex-wrap">
+                <Button onClick={handleAddCota} size="sm" className="font-medium">
+                  <Plus className="w-4 h-4 mr-2" />
+                  Adicionar Cota
+                </Button>
+                {cotas.length > 0 && (
+                  <>
+                    {totais.credito > 0 && (
+                      <Button onClick={handleAplicarTotais} variant="primary" size="sm" className="font-medium">
+                        <Calculator className="w-4 h-4 mr-2" />
+                        Aplicar Totais à Estrutura
+                      </Button>
+                    )}
+                    <Button 
+                      onClick={handleLimparTudo} 
+                      variant="outline" 
+                      size="sm"
+                      className="font-medium text-red-600 hover:text-red-700 hover:border-red-300"
+                    >
+                      <X className="w-4 h-4 mr-2" />
+                      Limpar Seção
+                    </Button>
+                  </>
                 )}
               </div>
 
@@ -109,24 +130,27 @@ export function AbaCotas() {
               ) : (
                 <>
                   {/* Resumo dos Totais */}
-                  <div className="bg-gray-50 p-4 rounded-lg">
-                    <h3 className="font-semibold mb-3">Resumo dos Totais</h3>
+                  <div className="bg-gradient-to-r from-primary/10 to-primary/5 p-6 rounded-lg border-2 border-primary/20">
+                    <div className="flex items-center gap-2 mb-4">
+                      <CreditCard className="w-5 h-5 text-primary" />
+                      <h3 className="font-bold text-lg">Resumo dos Totais</h3>
+                    </div>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      <div>
-                        <p className="text-sm text-gray-600">Quantidade de Cotas</p>
-                        <p className="text-xl font-bold">{totais.quantidade}</p>
+                      <div className="bg-white p-3 rounded-lg border border-gray-200">
+                        <p className="text-xs text-gray-600 mb-1">Quantidade de Cotas</p>
+                        <p className="text-2xl font-bold text-gray-900">{totais.quantidade}</p>
                       </div>
-                      <div>
-                        <p className="text-sm text-gray-600">Crédito Total</p>
-                        <p className="text-xl font-bold text-primary">{formatBRL(totais.credito)}</p>
+                      <div className="bg-white p-3 rounded-lg border-2 border-primary">
+                        <p className="text-xs text-gray-600 mb-1">Crédito Total</p>
+                        <p className="text-2xl font-bold text-primary">{formatBRL(totais.credito)}</p>
                       </div>
-                      <div>
-                        <p className="text-sm text-gray-600">Parcela Mensal Total</p>
-                        <p className="text-xl font-bold">{formatBRL(totais.parcelaMensal)}</p>
+                      <div className="bg-white p-3 rounded-lg border border-gray-200">
+                        <p className="text-xs text-gray-600 mb-1">Parcela Mensal Total</p>
+                        <p className="text-2xl font-bold text-gray-900">{formatBRL(totais.parcelaMensal)}</p>
                       </div>
-                      <div>
-                        <p className="text-sm text-gray-600">Saldo Devedor Total</p>
-                        <p className="text-xl font-bold">{formatBRL(totais.saldoDevedor)}</p>
+                      <div className="bg-white p-3 rounded-lg border border-gray-200">
+                        <p className="text-xs text-gray-600 mb-1">Saldo Devedor Total</p>
+                        <p className="text-2xl font-bold text-gray-900">{formatBRL(totais.saldoDevedor)}</p>
                       </div>
                     </div>
                   </div>
@@ -146,29 +170,63 @@ export function AbaCotas() {
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pr-20">
-                          <Input
-                            label="Grupo"
-                            value={cota.grupo}
-                            onChange={(e) =>
-                              handleUpdateCota(cota.id, 'grupo', e.target.value)
-                            }
-                            placeholder="Ex: 12345"
-                          />
-                          <Input
-                            label="Número da Cota"
-                            value={cota.cota}
-                            onChange={(e) =>
-                              handleUpdateCota(cota.id, 'cota', e.target.value)
-                            }
-                            placeholder="Ex: 001"
-                          />
-                          <InputMoney
-                            label="Crédito"
-                            value={cota.credito}
-                            onChange={(value) =>
-                              handleUpdateCota(cota.id, 'credito', value)
-                            }
-                          />
+                          <div className="bg-blue-50 p-3 rounded-lg border-2 border-blue-300">
+                            <p className="text-xs text-gray-600 mb-1">Dados da Cota</p>
+                            <Input
+                              label="Grupo"
+                              value={cota.grupo}
+                              onChange={(e) =>
+                                handleUpdateCota(cota.id, 'grupo', e.target.value)
+                              }
+                              placeholder="Ex: 12345"
+                            />
+                            <Input
+                              label="Número da Cota"
+                              value={cota.cota}
+                              onChange={(e) =>
+                                handleUpdateCota(cota.id, 'cota', e.target.value)
+                              }
+                              placeholder="Ex: 001"
+                              className="mt-2"
+                            />
+                          </div>
+                          <div className="bg-green-50 p-3 rounded-lg border-2 border-green-300">
+                            <p className="text-xs text-gray-600 mb-1">Valores</p>
+                            <InputMoney
+                              label="Crédito"
+                              value={cota.credito}
+                              onChange={(value) =>
+                                handleUpdateCota(cota.id, 'credito', value)
+                              }
+                            />
+                            <InputMoney
+                              label="Parcela Mensal"
+                              value={cota.parcelaMensal}
+                              onChange={(value) =>
+                                handleUpdateCota(cota.id, 'parcelaMensal', value)
+                              }
+                              className="mt-2"
+                            />
+                          </div>
+                          <div className="bg-gray-50 p-3 rounded-lg border-2 border-gray-300">
+                            <p className="text-xs text-gray-600 mb-1">Outros Dados</p>
+                            <InputMoney
+                              label="Saldo Devedor"
+                              value={cota.saldoDevedor}
+                              onChange={(value) =>
+                                handleUpdateCota(cota.id, 'saldoDevedor', value)
+                              }
+                            />
+                            <Input
+                              label="Prazo (meses)"
+                              type="number"
+                              value={cota.prazo}
+                              onChange={(e) =>
+                                handleUpdateCota(cota.id, 'prazo', parseInt(e.target.value) || 0)
+                              }
+                              className="mt-2"
+                            />
+                          </div>
                           <InputMoney
                             label="Parcela Mensal"
                             value={cota.parcelaMensal}
