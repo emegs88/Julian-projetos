@@ -84,7 +84,7 @@ export default function SimuladorPage() {
           </div>
 
           {/* Tab Content */}
-          <div className="min-h-[400px]">
+          <div className="min-h-[400px] relative" style={{ zIndex: 1 }}>
             {activeTab === 'empreendimento' && (
               <TabErrorBoundary tabName="Empreendimento">
                 <AbaEmpreendimento />
