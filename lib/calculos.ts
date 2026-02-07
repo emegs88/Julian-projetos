@@ -39,6 +39,18 @@ export function calcularCronograma(estrutura: EstruturaOperacao): CronogramaMes[
   const credito = estrutura.credito;
   const parcela = estrutura.parcelaMensal;
   
+  // Validar entradas
+  if (prazo <= 0 || credito <= 0) {
+    return [{
+      mes: 0,
+      saldoDevedor: 0,
+      parcela: 0,
+      juros: 0,
+      amortizacao: 0,
+      saldoInicial: 0,
+    }];
+  }
+  
   // Taxa mensal (assumindo taxa de administração anual)
   let taxaMensal = 0;
   if (estrutura.taxaAdministracaoTipo === 'anual') {
@@ -48,7 +60,7 @@ export function calcularCronograma(estrutura: EstruturaOperacao): CronogramaMes[
   }
   
   // Saldo devedor inicial = crédito menos entrada (entrada é descontada do crédito)
-  let saldoDevedor = credito - estrutura.entrada;
+  let saldoDevedor = Math.max(0, credito - estrutura.entrada);
   
   for (let mes = 0; mes <= prazo; mes++) {
     if (mes === 0) {
