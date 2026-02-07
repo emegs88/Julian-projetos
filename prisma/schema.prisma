@@ -1,0 +1,64 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model VehicleFipe {
+  id        String   @id @default(cuid())
+  marca     String
+  modelo    String
+  ano       Int
+  fipe      Float
+  categoria String?
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+
+  @@index([modelo])
+  @@index([marca])
+  @@index([ano])
+}
+
+model VehicleWatchlist {
+  id         String   @id @default(cuid())
+  categoria  String   // carros|motos|caminhoes
+  marca      String
+  modelo     String
+  anoModelo  Int
+  codigoFipe String   // obrigatório para atualizar automático
+  apelido    String?  // ex: "Jaguar Blindado"
+  ativo      Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relação com histórico de preços
+  priceHistory FipePriceHistory[]
+
+  @@index([codigoFipe])
+  @@index([ativo])
+  @@index([categoria])
+}
+
+model FipePriceHistory {
+  id            String   @id @default(cuid())
+  vehicleId     String
+  codigoFipe    String
+  mesReferencia String   // vem da API (ex: "2024-01")
+  valor         Float    // valor numérico em R$
+  raw           String?  @default("{}") // resposta completa JSON para auditoria
+  fetchedAt     DateTime @default(now())
+
+  // Relação com veículo
+  vehicle VehicleWatchlist @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@unique([vehicleId, mesReferencia])
+  @@index([codigoFipe])
+  @@index([mesReferencia])
+  @@index([fetchedAt])
+}

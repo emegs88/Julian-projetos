@@ -3,7 +3,6 @@
 import { useSimuladorStore } from '@/store/useSimuladorStore';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { InputPercent } from '@/components/ui/InputPercent';
 import { Alert } from '@/components/ui/Alert';
 import { Download, FileText } from 'lucide-react';
 import { useState } from 'react';
@@ -22,8 +21,7 @@ import {
 import { formatBRL } from '@/lib/utils';
 
 export function AbaGraficos() {
-  const { calculos, estrutura } = useSimuladorStore();
-  const [cdiMensal, setCdiMensal] = useState(1.0);
+  const { calculos, estrutura, cotasBidCon } = useSimuladorStore();
 
   if (!calculos) {
     return (
@@ -49,25 +47,6 @@ export function AbaGraficos() {
     limite: calculos.limiteSaldo,
   }));
 
-  // Simulação CDI
-  const simularCDI = () => {
-    const parcela = estrutura.parcelaMensal;
-    const prazo = estrutura.prazoTotal;
-    const taxaMensal = cdiMensal / 100;
-    let acumulado = 0;
-
-    const resultado = [];
-    for (let mes = 1; mes <= prazo; mes++) {
-      acumulado = acumulado * (1 + taxaMensal) + parcela;
-      resultado.push({
-        mes: `M${mes}`,
-        acumulado,
-      });
-    }
-    return resultado;
-  };
-
-  const dadosCDI = simularCDI();
 
   const handleExportPDF = async () => {
     if (typeof window === 'undefined') return;
@@ -183,56 +162,115 @@ export function AbaGraficos() {
         )}
       </Card>
 
-      <Card title="Comparação com CDI">
-        <div className="mb-4">
-          <InputPercent
-            label="CDI Mensal (%)"
-            value={cdiMensal}
-            onChange={(value) => setCdiMensal(value)}
-          />
-        </div>
-        <ResponsiveContainer width="100%" height={400}>
-          <LineChart data={dadosCDI}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="mes" />
-            <YAxis />
-            <Tooltip formatter={(value: number) => formatBRL(value)} />
-            <Legend />
-            <Line
-              type="monotone"
-              dataKey="acumulado"
-              stroke="#3b82f6"
-              strokeWidth={2}
-              name="Acumulado CDI"
-            />
-          </LineChart>
-        </ResponsiveContainer>
-        <div className="mt-4 text-sm text-gray-600">
-          <p>
-            Simulação: Se você aplicasse o valor da parcela mensal ({formatBRL(estrutura.parcelaMensal)}) no CDI
-            de {cdiMensal.toFixed(2)}% ao mês, teria acumulado{' '}
-            {formatBRL(dadosCDI[dadosCDI.length - 1]?.acumulado || 0)} após {estrutura.prazoTotal} meses.
-          </p>
+      <Card title="Gráficos e Alertas (Saldo x Garantia / LTV)">
+        <div className="space-y-4">
+          <Alert variant="info">
+            Visualize a relação entre saldo devedor e garantia disponível, com alertas automáticos quando o LTV é excedido.
+          </Alert>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <p className="text-sm text-gray-600 mb-1">Saldo Pico</p>
+              <p className="text-2xl font-bold text-primary">{formatBRL(calculos.saldoPico)}</p>
+              <p className="text-xs text-gray-500 mt-1">Mês {calculos.mesSaldoPico}</p>
+            </div>
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <p className="text-sm text-gray-600 mb-1">Limite Pool</p>
+              <p className="text-2xl font-bold">{formatBRL(calculos.limiteSaldo)}</p>
+              <p className="text-xs text-gray-500 mt-1">LTV: {calculos.valorGarantia > 0 ? ((calculos.saldoPico / calculos.valorGarantia) * 100).toFixed(2) : 0}%</p>
+            </div>
+          </div>
+          {!calculos.dentroLimiteLTV && (
+            <Alert variant="error">
+              <p className="font-semibold">⚠️ Alerta: Saldo Pico excede o Limite Pool</p>
+              <p className="text-sm mt-1">
+                Faltam {formatBRL(calculos.saldoPico - calculos.limiteSaldo)} de garantia. 
+                Selecione mais {calculos.quantidadeMinimaMatriculas} matrícula(s) ou aumente o valor da garantia.
+              </p>
+            </Alert>
+          )}
         </div>
       </Card>
 
       {/* Relatório completo (oculto, usado para PDF) */}
       <div id="relatorio-completo" className="hidden">
         <div className="p-8 bg-white">
-          <h1 className="text-3xl font-bold mb-4">Relatório de Captação</h1>
+          <h1 className="text-3xl font-bold mb-4 text-center">Relatório Interno - Portal Captação</h1>
           <div className="space-y-6">
-            <div>
+            {/* Dados do Empreendimento */}
+            <div className="border-b pb-4">
+              <h2 className="text-xl font-bold mb-2">Empreendimento</h2>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <p><strong>Nome:</strong> Cidade Jardim</p>
+                <p><strong>Localização:</strong> Promissão/SP</p>
+                <p><strong>Matrícula:</strong> 13.410</p>
+                <p><strong>Área Total:</strong> 84.579,51 m²</p>
+                <p><strong>Total de Lotes:</strong> 226 (219 res + 7 mistos)</p>
+              </div>
+            </div>
+            
+            {/* Resumo da Operação */}
+            <div className="border-b pb-4">
               <h2 className="text-xl font-bold mb-2">Resumo da Operação</h2>
-              <p>Valor Líquido: {formatBRL(calculos.valorLiquido)}</p>
-              <p>Saldo Pico: {formatBRL(calculos.saldoPico)} (Mês {calculos.mesSaldoPico})</p>
-              <p>CET Anual: {calculos.cetAnual * 100}%</p>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <p><strong>Crédito:</strong> {formatBRL(estrutura.credito)}</p>
+                <p><strong>Valor Líquido:</strong> {formatBRL(calculos.valorLiquido)}</p>
+                <p><strong>Saldo Pico:</strong> {formatBRL(calculos.saldoPico)}</p>
+                <p><strong>Mês do Saldo Pico:</strong> {calculos.mesSaldoPico}</p>
+                <p><strong>CET Mensal:</strong> {(calculos.cetMensal * 100).toFixed(4)}%</p>
+                <p><strong>CET Anual:</strong> {(calculos.cetAnual * 100).toFixed(2)}%</p>
+              </div>
             </div>
-            <div>
-              <h2 className="text-xl font-bold mb-2">Garantias</h2>
-              <p>Valor da Garantia: {formatBRL(calculos.valorGarantia)}</p>
-              <p>Limite LTV: {formatBRL(calculos.limiteSaldo)}</p>
-              <p>Dentro do Limite: {calculos.dentroLimiteLTV ? 'Sim' : 'Não'}</p>
+            
+            {/* Pool Global */}
+            <div className="border-b pb-4">
+              <h2 className="text-xl font-bold mb-2">Pool Global de Garantia</h2>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <p><strong>Garantia Lotes:</strong> {formatBRL(calculos.valorGarantia)}</p>
+                <p><strong>Garantia Veículos:</strong> {formatBRL(0)}</p>
+                <p><strong>Garantia Total:</strong> {formatBRL(calculos.valorGarantia)}</p>
+                <p><strong>Limite LTV:</strong> {formatBRL(calculos.limiteSaldo)}</p>
+                <p><strong>Folga:</strong> {formatBRL(calculos.limiteSaldo - calculos.saldoPico)}</p>
+                <p><strong>Status:</strong> {calculos.dentroLimiteLTV ? 'SEGURO' : 'INSUFICIENTE'}</p>
+              </div>
             </div>
+            
+            {/* Cotas BidCon Selecionadas */}
+            {cotasBidCon.filter((c) => c.selecionada).length > 0 && (
+              <div className="border-b pb-4">
+                <h2 className="text-xl font-bold mb-2">Cotas Selecionadas (BidCon)</h2>
+                <div className="space-y-2 text-sm">
+                  {cotasBidCon
+                    .filter((c) => c.selecionada)
+                    .map((cota) => (
+                      <div key={cota.id} className="grid grid-cols-5 gap-2 border-b pb-2">
+                        <p><strong>Grupo/Cota:</strong> {cota.grupo}/{cota.cota}</p>
+                        <p><strong>Crédito:</strong> {formatBRL(cota.credito)}</p>
+                        <p><strong>Líquido a Pagar:</strong> {formatBRL(cota.valorLiquidoAPagar)}</p>
+                        <p><strong>Parcela:</strong> {formatBRL(cota.parcela)}</p>
+                        <p><strong>Prazo:</strong> {cota.prazoMeses} meses</p>
+                        <p className="col-span-2"><strong>Administradora:</strong> {cota.administradora}</p>
+                        <p className="col-span-3"><strong>Status:</strong> {cota.status}</p>
+                      </div>
+                    ))}
+                  <div className="mt-4 pt-2 border-t">
+                    <div className="grid grid-cols-4 gap-4 font-semibold">
+                      <p>Total Crédito: {formatBRL(cotasBidCon.filter((c) => c.selecionada).reduce((sum, c) => sum + c.credito, 0))}</p>
+                      <p>Total Líquido: {formatBRL(cotasBidCon.filter((c) => c.selecionada).reduce((sum, c) => sum + c.valorLiquidoAPagar, 0))}</p>
+                      <p>Total Parcelas: {formatBRL(cotasBidCon.filter((c) => c.selecionada).reduce((sum, c) => sum + c.parcela, 0))}</p>
+                      <p>Qtd Cotas: {cotasBidCon.filter((c) => c.selecionada).length}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            {/* Garantias Selecionadas */}
+            <div className="border-b pb-4">
+              <h2 className="text-xl font-bold mb-2">Garantias Selecionadas</h2>
+              <p className="text-sm text-gray-600">Lotes e veículos incluídos no pool de garantia</p>
+            </div>
+            
+            {/* Gráficos serão capturados via html2canvas */}
           </div>
         </div>
       </div>

@@ -12,6 +12,7 @@ import { formatBRL, formatNumber } from '@/lib/utils';
 import { CheckCircle, XCircle, Save, Target, CheckSquare, Square, Trash2, BarChart3 } from 'lucide-react';
 import { CenarioGarantia } from '@/types';
 import { estatisticasPromissao, empreendimentoPromissao } from '@/data/promissao-lotes';
+import { PoolGlobal } from './PoolGlobal';
 import {
   BarChart,
   Bar,
@@ -41,6 +42,7 @@ export function AbaGarantias() {
   } = useSimuladorStore();
 
   const [nomeCenario, setNomeCenario] = useState('');
+  const [estrategiaSelecao, setEstrategiaSelecao] = useState<'maior-primeiro' | 'menor-primeiro'>('maior-primeiro');
 
   // Calcular pool de garantia consolidada (lotes + veículos + cotas automóveis)
   const poolGarantia = useMemo(() => {
@@ -84,17 +86,21 @@ export function AbaGarantias() {
     const totalItens = lotesSelecionados.length + veiculosSelecionados.length + cotasAutomoveisSelecionadas.length;
     const valorMedio = totalItens > 0 ? valorTotal / totalItens : 0;
 
-    const maiorLote = lotesSelecionados.reduce((max, l) => {
-      const valor = garantia.criterioAvaliacao === 'mercado' ? l.valorMercado : l.valorVendaForcada;
-      const maxValor = garantia.criterioAvaliacao === 'mercado' ? max.valorMercado : max.valorVendaForcada;
-      return valor > maxValor ? l : max;
-    }, lotesSelecionados[0]);
+    const maiorLote = lotesSelecionados.length > 0
+      ? lotesSelecionados.reduce((max, l) => {
+          const valor = garantia.criterioAvaliacao === 'mercado' ? l.valorMercado : l.valorVendaForcada;
+          const maxValor = garantia.criterioAvaliacao === 'mercado' ? max.valorMercado : max.valorVendaForcada;
+          return valor > maxValor ? l : max;
+        }, lotesSelecionados[0])
+      : null;
 
-    const menorLote = lotesSelecionados.reduce((min, l) => {
-      const valor = garantia.criterioAvaliacao === 'mercado' ? l.valorMercado : l.valorVendaForcada;
-      const minValor = garantia.criterioAvaliacao === 'mercado' ? min.valorMercado : min.valorVendaForcada;
-      return valor < minValor ? l : min;
-    }, lotesSelecionados[0]);
+    const menorLote = lotesSelecionados.length > 0
+      ? lotesSelecionados.reduce((min, l) => {
+          const valor = garantia.criterioAvaliacao === 'mercado' ? l.valorMercado : l.valorVendaForcada;
+          const minValor = garantia.criterioAvaliacao === 'mercado' ? min.valorMercado : min.valorVendaForcada;
+          return valor < minValor ? l : min;
+        }, lotesSelecionados[0])
+      : null;
 
     return {
       quantidade: lotesSelecionados.length + veiculosSelecionados.length + cotasAutomoveisSelecionadas.length,
@@ -109,28 +115,81 @@ export function AbaGarantias() {
     };
   }, [lotes, veiculos, cotasAutomoveis, garantia.lotesSelecionados, garantia.veiculosSelecionados, garantia.usarVeiculos, garantia.criterioAvaliacao]);
 
-  const limitePermitido = calcularLimiteSaldo(poolGarantia.valorTotal, garantia.ltvMaximo);
+  // INTEGRAÇÃO COM OPERAÇÃO - Importar da aba Estrutura
   const saldoPico = calculos?.saldoPico || 0;
+  const saldoAtual = calculos?.cronograma?.[calculos.cronograma.length - 1]?.saldoDevedor || 0;
+  const cronogramaSaldo = calculos?.cronograma || [];
+  
+  // POOL DE GARANTIA
+  const poolValor = poolGarantia.valorTotal;
+  const limitePermitido = calcularLimiteSaldo(poolValor, garantia.ltvMaximo);
+  
+  // Comparar com saldoDevedorPico
   const dentroLimite = saldoPico <= limitePermitido;
   const faltaGarantia = Math.max(0, saldoPico - limitePermitido);
+  const folga = Math.max(0, limitePermitido - saldoPico);
   const percentualCobertura = limitePermitido > 0 ? (saldoPico / limitePermitido) * 100 : 0;
+  
+  // Status com cores
+  const statusCor = !dentroLimite 
+    ? 'vermelho' 
+    : percentualCobertura >= 95 
+      ? 'amarelo' 
+      : 'verde';
+  
+  const statusTexto = !dentroLimite 
+    ? 'INSUFICIENTE' 
+    : percentualCobertura >= 95 
+      ? 'ATENÇÃO' 
+      : 'SEGURO';
 
-  // Selecionar mínimo necessário
+  // Selecionar mínimo necessário com estratégias
   const handleSelecionarMinimo = () => {
-    if (saldoPico <= 0) return;
+    if (saldoPico <= 0) {
+      alert('⚠️ Configure a operação primeiro para calcular o saldo devedor pico.');
+      return;
+    }
 
-    const quantidadeMinima = calcularMinimoMatriculas(lotes, garantia, saldoPico, 'maior-primeiro');
+    const limiteNecessario = saldoPico / (garantia.ltvMaximo / 100);
     
-    // Ordenar lotes por valor (maior primeiro)
+    // Ordenar lotes por valor (baseado na estratégia escolhida)
     const lotesOrdenados = [...lotes].sort((a, b) => {
       const valorA = garantia.criterioAvaliacao === 'mercado' ? a.valorMercado : a.valorVendaForcada;
       const valorB = garantia.criterioAvaliacao === 'mercado' ? b.valorMercado : b.valorVendaForcada;
-      return valorB - valorA;
+      return estrategiaSelecao === 'maior-primeiro' ? valorB - valorA : valorA - valorB;
     });
 
-    // Selecionar os primeiros N lotes
-    const idsSelecionados = lotesOrdenados.slice(0, quantidadeMinima).map((l) => l.id);
+    // Somar até cobrir o limite necessário
+    let soma = 0;
+    const idsSelecionados: string[] = [];
+    
+    for (const lote of lotesOrdenados) {
+      const valor = garantia.criterioAvaliacao === 'mercado' ? lote.valorMercado : lote.valorVendaForcada;
+      soma += valor;
+      idsSelecionados.push(lote.id);
+      
+      if (soma >= limiteNecessario) {
+        break;
+      }
+    }
+
     setGarantia({ lotesSelecionados: idsSelecionados });
+    
+    // Calcular folga
+    const valorTotalSelecionado = soma;
+    const limiteComLTV = valorTotalSelecionado * (garantia.ltvMaximo / 100);
+    const folgaCalculada = limiteComLTV - saldoPico;
+    
+    // Feedback melhorado
+    setTimeout(() => {
+      alert(
+        `✅ Seleção automática concluída!\n\n` +
+        `📊 Mínimo necessário: ${idsSelecionados.length} lote(s)\n` +
+        `💰 Valor pool: ${formatBRL(valorTotalSelecionado)}\n` +
+        `📈 Limite LTV ${garantia.ltvMaximo}%: ${formatBRL(limiteComLTV)}\n` +
+        `💚 Folga: ${formatBRL(folgaCalculada)}`
+      );
+    }, 100);
   };
 
   // Salvar cenário
@@ -166,6 +225,9 @@ export function AbaGarantias() {
 
   return (
     <div className="space-y-6">
+      {/* Pool Global Fixo no Topo */}
+      <PoolGlobal />
+      
       {/* Info Promissão */}
       <Card title={`Garantias - ${empreendimentoPromissao.nome} - ${empreendimentoPromissao.localizacao}`}>
         <div className="bg-blue-50 p-4 rounded-lg mb-4">
@@ -261,15 +323,37 @@ export function AbaGarantias() {
                   <Square className="w-4 h-4 mr-2" />
                   Limpar Seleção
                 </Button>
-                <Button
-                  size="sm"
-                  variant="primary"
-                  onClick={handleSelecionarMinimo}
-                  disabled={saldoPico <= 0}
-                >
-                  <Target className="w-4 h-4 mr-2" />
-                  Selecionar Mínimo Necessário
-                </Button>
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 bg-white p-2 rounded border border-gray-300">
+                    <label className="flex items-center gap-1 text-xs">
+                      <input
+                        type="radio"
+                        checked={estrategiaSelecao === 'maior-primeiro'}
+                        onChange={() => setEstrategiaSelecao('maior-primeiro')}
+                        className="w-3 h-3"
+                      />
+                      <span>Maior→Menor</span>
+                    </label>
+                    <label className="flex items-center gap-1 text-xs">
+                      <input
+                        type="radio"
+                        checked={estrategiaSelecao === 'menor-primeiro'}
+                        onChange={() => setEstrategiaSelecao('menor-primeiro')}
+                        className="w-3 h-3"
+                      />
+                      <span>Menor→Maior</span>
+                    </label>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    onClick={handleSelecionarMinimo}
+                    disabled={saldoPico <= 0}
+                  >
+                    <Target className="w-4 h-4 mr-2" />
+                    Selecionar Mínimo Necessário
+                  </Button>
+                </div>
               </div>
 
               {lotes.length === 0 ? (
@@ -280,44 +364,49 @@ export function AbaGarantias() {
                 <div className="overflow-x-auto">
                   <table className="w-full border-collapse">
                     <thead>
-                      <tr className="bg-gray-100">
-                        <th className="border border-gray-300 px-4 py-2 text-left w-12"></th>
-                        <th className="border border-gray-300 px-4 py-2 text-left">Lote</th>
-                        <th className="border border-gray-300 px-4 py-2 text-left">Matrícula</th>
-                        <th className="border border-gray-300 px-4 py-2 text-right">Área (m²)</th>
-                        <th className="border border-gray-300 px-4 py-2 text-right">Valor</th>
+                      <tr className="bg-gray-100 font-semibold">
+                        <th className="border border-gray-300 px-4 py-3 text-left w-12"></th>
+                        <th className="border border-gray-300 px-4 py-3 text-left">ID</th>
+                        <th className="border border-gray-300 px-4 py-3 text-left">Matrícula</th>
+                        <th className="border border-gray-300 px-4 py-3 text-right">Área (m²)</th>
+                        <th className="border border-gray-300 px-4 py-3 text-right">Valor Mercado</th>
+                        <th className="border border-gray-300 px-4 py-3 text-right">Venda Forçada</th>
+                        <th className="border border-gray-300 px-4 py-3 text-left">Obs</th>
                       </tr>
                     </thead>
                     <tbody>
                       {lotes.map((lote) => {
-                        const valor =
-                          garantia.criterioAvaliacao === 'mercado'
-                            ? lote.valorMercado
-                            : lote.valorVendaForcada;
                         const selecionado = garantia.lotesSelecionados.includes(lote.id);
                         return (
                           <tr
                             key={lote.id}
-                            className={`hover:bg-gray-50 cursor-pointer ${
-                              selecionado ? 'bg-blue-50' : ''
+                            className={`hover:bg-gray-50 cursor-pointer transition-colors ${
+                              selecionado ? 'bg-blue-50 border-l-4 border-l-primary' : ''
                             }`}
                             onClick={() => toggleLoteSelecionado(lote.id)}
                           >
-                            <td className="border border-gray-300 px-4 py-2 text-center">
+                            <td className="border border-gray-300 px-4 py-3 text-center">
                               <input
                                 type="checkbox"
                                 checked={selecionado}
                                 onChange={() => toggleLoteSelecionado(lote.id)}
                                 onClick={(e) => e.stopPropagation()}
+                                className="w-4 h-4 cursor-pointer"
                               />
                             </td>
-                            <td className="border border-gray-300 px-4 py-2">{lote.id}</td>
-                            <td className="border border-gray-300 px-4 py-2">{lote.matricula}</td>
-                            <td className="border border-gray-300 px-4 py-2 text-right">
+                            <td className="border border-gray-300 px-4 py-3 font-medium">{lote.id}</td>
+                            <td className="border border-gray-300 px-4 py-3">{lote.matricula || '-'}</td>
+                            <td className="border border-gray-300 px-4 py-3 text-right">
                               {formatNumber(lote.area, 2)}
                             </td>
-                            <td className="border border-gray-300 px-4 py-2 text-right">
-                              {formatBRL(valor)}
+                            <td className="border border-gray-300 px-4 py-3 text-right font-semibold">
+                              {formatBRL(lote.valorMercado)}
+                            </td>
+                            <td className="border border-gray-300 px-4 py-3 text-right">
+                              {formatBRL(lote.valorVendaForcada)}
+                            </td>
+                            <td className="border border-gray-300 px-4 py-3 text-sm text-gray-600">
+                              {lote.observacoes || '-'}
                             </td>
                           </tr>
                         );
@@ -329,80 +418,170 @@ export function AbaGarantias() {
             </Card>
           </div>
 
-          {/* Painel Lateral - Pool de Garantia */}
+          {/* Card Grande: GARANTIA CONSOLIDADA */}
           <div className="lg:col-span-1">
-            <Card title="Garantia Consolidada (Pool)" className="sticky top-4">
+            <Card title="GARANTIA CONSOLIDADA" className="sticky top-4">
               {poolGarantia.quantidade === 0 ? (
                 <Alert variant="info">
                   Selecione lotes ou veículos para ver o pool de garantia consolidada.
                 </Alert>
               ) : (
-                <div className="space-y-4">
-                  <div className="bg-primary/10 p-4 rounded-lg">
-                    <p className="text-sm text-gray-600">Quantidade Total</p>
-                    <p className="text-3xl font-bold text-primary">{poolGarantia.quantidade}</p>
-                    <p className="text-xs text-gray-500 mt-1">
-                      {poolGarantia.quantidadeLotes} lote(s)
-                      {poolGarantia.quantidadeVeiculos > 0 && (
-                        <> + {poolGarantia.quantidadeVeiculos} veículo(s)</>
-                      )}
-                    </p>
-                  </div>
-                  
-                  {poolGarantia.quantidadeVeiculos > 0 && (
-                    <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
-                      <p className="text-sm font-semibold text-yellow-800 mb-2">Veículos Incluídos</p>
-                      <p className="text-sm text-yellow-700">
-                        {poolGarantia.quantidadeVeiculos} veículo(s) com garantia de 130% FIPE
-                      </p>
-                    </div>
-                  )}
-
-
-                  <div className="bg-gray-50 p-4 rounded-lg">
-                    <p className="text-sm text-gray-600">Valor Médio</p>
-                    <p className="text-xl font-bold">{formatBRL(poolGarantia.valorMedio)}</p>
-                    <p className="text-xs text-gray-500 mt-1">por item (lote/veículo)</p>
-                  </div>
-
-                  <div className="bg-gray-50 p-4 rounded-lg">
-                    <p className="text-sm text-gray-600">Área Total</p>
-                    <p className="text-xl font-bold">
-                      {formatNumber(poolGarantia.areaTotal, 2)} m²
-                    </p>
-                  </div>
-
-                  <div className="bg-gray-50 p-4 rounded-lg">
-                    <p className="text-sm text-gray-600">Número de Matrículas</p>
-                    <p className="text-xl font-bold">{poolGarantia.numeroMatriculas}</p>
-                  </div>
-
-                  {poolGarantia.maiorLote && (
-                    <div className="bg-green-50 p-4 rounded-lg">
-                      <p className="text-sm text-gray-600">Maior Lote</p>
-                      <p className="font-semibold">{poolGarantia.maiorLote.id}</p>
-                      <p className="text-sm">
-                        {formatBRL(
-                          garantia.criterioAvaliacao === 'mercado'
-                            ? poolGarantia.maiorLote.valorMercado
-                            : poolGarantia.maiorLote.valorVendaForcada
+                <div className="space-y-6">
+                  {/* Valores Principais */}
+                  <div className="space-y-4">
+                    <div className="bg-gradient-to-r from-gray-50 to-gray-100 p-4 rounded-lg border-2 border-gray-300">
+                      <p className="text-sm text-gray-600 mb-1">Valor Pool</p>
+                      <p className="text-3xl font-bold text-gray-900">{formatBRL(poolValor)}</p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        {poolGarantia.quantidadeLotes} lote(s)
+                        {poolGarantia.quantidadeVeiculos > 0 && (
+                          <> + {poolGarantia.quantidadeVeiculos} veículo(s)</>
                         )}
                       </p>
                     </div>
-                  )}
-
-                  {poolGarantia.menorLote && (
-                    <div className="bg-blue-50 p-4 rounded-lg">
-                      <p className="text-sm text-gray-600">Menor Lote</p>
-                      <p className="font-semibold">{poolGarantia.menorLote.id}</p>
-                      <p className="text-sm">
-                        {formatBRL(
-                          garantia.criterioAvaliacao === 'mercado'
-                            ? poolGarantia.menorLote.valorMercado
-                            : poolGarantia.menorLote.valorVendaForcada
-                        )}
+                    
+                    <div className="bg-blue-50 p-4 rounded-lg border-2 border-blue-300">
+                      <p className="text-sm text-gray-600 mb-1">Limite LTV {garantia.ltvMaximo}%</p>
+                      <p className="text-3xl font-bold text-blue-700">{formatBRL(limitePermitido)}</p>
+                    </div>
+                    
+                    <div className="bg-red-50 p-4 rounded-lg border-2 border-red-300">
+                      <p className="text-sm text-gray-600 mb-1">Saldo Pico</p>
+                      <p className="text-3xl font-bold text-red-700">{formatBRL(saldoPico)}</p>
+                      <p className="text-xs text-gray-500 mt-1">Mês {calculos?.mesSaldoPico || 0}</p>
+                    </div>
+                    
+                    <div className={`p-4 rounded-lg border-2 ${
+                      folga > 0 
+                        ? 'bg-green-50 border-green-300' 
+                        : 'bg-red-50 border-red-300'
+                    }`}>
+                      <p className="text-sm text-gray-600 mb-1">Folga</p>
+                      <p className={`text-3xl font-bold ${
+                        folga > 0 ? 'text-green-700' : 'text-red-700'
+                      }`}>
+                        {formatBRL(folga)}
                       </p>
                     </div>
+                  </div>
+
+                  {/* Status */}
+                  <div className={`p-6 rounded-lg border-2 text-center ${
+                    statusCor === 'verde' 
+                      ? 'bg-green-50 border-green-400' 
+                      : statusCor === 'amarelo'
+                        ? 'bg-yellow-50 border-yellow-400'
+                        : 'bg-red-50 border-red-400'
+                  }`}>
+                    <p className="text-sm text-gray-600 mb-2">STATUS</p>
+                    <p className={`text-4xl font-bold ${
+                      statusCor === 'verde' 
+                        ? 'text-green-700' 
+                        : statusCor === 'amarelo'
+                          ? 'text-yellow-700'
+                          : 'text-red-700'
+                    }`}>
+                      {statusTexto}
+                    </p>
+                  </div>
+
+                  {/* Indicador Visual - Barra */}
+                  <div className="bg-gray-100 p-4 rounded-lg">
+                    <p className="text-sm font-semibold text-gray-700 mb-3 text-center">
+                      Indicador Visual
+                    </p>
+                    <div className="flex items-center justify-between gap-4 mb-2">
+                      <div className="flex-1 text-right">
+                        <p className="text-xs text-gray-600">SALDO PICO</p>
+                        <p className="text-lg font-bold text-red-600">{formatBRL(saldoPico)}</p>
+                      </div>
+                      <div className="flex-1">
+                        <div className="w-full bg-gray-200 rounded-full h-6 overflow-hidden relative">
+                          <div
+                            className={`h-full transition-all duration-500 ${
+                              statusCor === 'verde' 
+                                ? 'bg-green-500' 
+                                : statusCor === 'amarelo'
+                                  ? 'bg-yellow-500'
+                                  : 'bg-red-500'
+                            }`}
+                            style={{ width: `${Math.min(100, percentualCobertura)}%` }}
+                          />
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <span className="text-xs font-semibold text-gray-800">
+                              {percentualCobertura.toFixed(1)}%
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex-1 text-left">
+                        <p className="text-xs text-gray-600">LIMITE POOL</p>
+                        <p className="text-lg font-bold text-blue-600">{formatBRL(limitePermitido)}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Gráfico: Saldo vs Garantia ao longo do tempo */}
+                  {cronogramaSaldo.length > 0 && (
+                    <div className="bg-white p-4 rounded-lg border border-gray-200">
+                      <p className="text-sm font-semibold text-gray-700 mb-3 text-center">
+                        Saldo vs Garantia ao Longo do Tempo
+                      </p>
+                      <ResponsiveContainer width="100%" height={200}>
+                        <LineChart data={cronogramaSaldo.map((c) => ({
+                          mes: `M${c.mes}`,
+                          saldoDevedor: c.saldoDevedor,
+                          limite: limitePermitido,
+                        }))}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="mes" tick={{ fontSize: 10 }} />
+                          <YAxis tick={{ fontSize: 10 }} />
+                          <Tooltip formatter={(value: number) => formatBRL(value)} />
+                          <Legend />
+                          <Line
+                            type="monotone"
+                            dataKey="saldoDevedor"
+                            stroke="#ef4444"
+                            strokeWidth={2}
+                            name="Saldo Devedor"
+                            dot={false}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="limite"
+                            stroke="#22c55e"
+                            strokeWidth={2}
+                            strokeDasharray="5 5"
+                            name="Limite Pool"
+                            dot={false}
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  )}
+
+                  {/* Alerta */}
+                  {!dentroLimite && (
+                    <Alert variant="error">
+                      <div className="space-y-2">
+                        <p className="font-semibold">⚠️ Garantia Insuficiente</p>
+                        <p className="text-sm">
+                          Faltam <strong>{formatBRL(faltaGarantia)}</strong> em garantia.
+                        </p>
+                        <p className="text-sm">
+                          Sugestão: adicionar {calculos?.quantidadeMinimaMatriculas || 0} lote(s) ou aumentar o valor da garantia.
+                        </p>
+                        <Button
+                          size="sm"
+                          variant="primary"
+                          className="mt-2 w-full"
+                          onClick={handleSelecionarMinimo}
+                        >
+                          <Target className="w-4 h-4 mr-2" />
+                          Selecionar Mínimo Necessário
+                        </Button>
+                      </div>
+                    </Alert>
                   )}
                 </div>
               )}
@@ -411,99 +590,20 @@ export function AbaGarantias() {
         </div>
       )}
 
-      {/* Análise LTV e Cobertura */}
-      {garantia.modoJuncao === 'consolidado' && poolGarantia.quantidade > 0 && (
-        <Card title="Análise de Cobertura LTV">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <p className="text-sm text-gray-600">Limite Permitido (LTV {garantia.ltvMaximo}%)</p>
-              <p className="text-2xl font-bold">{formatBRL(limitePermitido)}</p>
-            </div>
-            <div className={`p-4 rounded-lg ${dentroLimite ? 'bg-green-50' : 'bg-red-50'}`}>
-              <p className="text-sm text-gray-600">Saldo Devedor Pico</p>
-              <p className={`text-2xl font-bold ${dentroLimite ? 'text-green-700' : 'text-red-700'}`}>
-                {formatBRL(saldoPico)}
-              </p>
-            </div>
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <p className="text-sm text-gray-600">Cobertura</p>
-              <p className="text-2xl font-bold">{percentualCobertura.toFixed(1)}%</p>
-            </div>
-          </div>
-
-          {/* Barra de Cobertura Visual */}
-          <div className="mb-6">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium">Cobertura do Saldo</span>
-              <span className="text-sm text-gray-600">
-                {formatBRL(saldoPico)} / {formatBRL(limitePermitido)}
-              </span>
-            </div>
-            <div className="w-full bg-gray-200 rounded-full h-6 overflow-hidden">
-              <div
-                className={`h-full transition-all ${
-                  dentroLimite ? 'bg-green-500' : 'bg-red-500'
-                }`}
-                style={{ width: `${Math.min(100, percentualCobertura)}%` }}
-              />
-            </div>
-          </div>
-
-          {dentroLimite ? (
-            <Alert variant="success">
-              <div className="flex items-center gap-2">
-                <CheckCircle className="w-5 h-5" />
-                <div>
-                  <p className="font-semibold">Pool cobre o saldo devedor!</p>
-                  <p className="text-sm">
-                    A garantia consolidada de {formatBRL(poolGarantia.valorTotal)} com LTV de{' '}
-                    {garantia.ltvMaximo}% permite um limite de {formatBRL(limitePermitido)}, que cobre
-                    o saldo pico de {formatBRL(saldoPico)}.
-                  </p>
-                </div>
-              </div>
-            </Alert>
-          ) : (
-            <Alert variant="error">
-              <div className="flex items-center gap-2">
-                <XCircle className="w-5 h-5" />
-                <div>
-                  <p className="font-semibold">Falta garantia!</p>
-                  <p className="text-sm">
-                    O saldo pico de {formatBRL(saldoPico)} excede o limite de {formatBRL(limitePermitido)}.
-                    Faltam {formatBRL(faltaGarantia)} em garantia adicional.
-                  </p>
-                  <Button
-                    size="sm"
-                    variant="primary"
-                    className="mt-2"
-                    onClick={handleSelecionarMinimo}
-                  >
-                    <Target className="w-4 h-4 mr-2" />
-                    Selecionar Mínimo Necessário
-                  </Button>
-                </div>
-              </div>
-            </Alert>
-          )}
-
-          {/* Gráfico de Cobertura */}
-          {saldoPico > 0 && (
-            <div className="mt-6">
-              <h4 className="font-semibold mb-4">Visualização: Saldo vs Limite</h4>
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={dadosGrafico}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="nome" />
-                  <YAxis />
-                  <Tooltip formatter={(value: number) => formatBRL(value)} />
-                  <Legend />
-                  <Bar dataKey="valor" fill="#ef4444" name="Saldo Pico" />
-                  <Bar dataKey="limite" fill="#22c55e" name="Limite Permitido" />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          )}
+      {/* Gráfico de Cobertura */}
+      {saldoPico > 0 && (
+        <Card title="Visualização: Saldo vs Limite" className="mt-6">
+          <ResponsiveContainer width="100%" height={300}>
+            <BarChart data={dadosGrafico}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="nome" />
+              <YAxis />
+              <Tooltip formatter={(value: number) => formatBRL(value)} />
+              <Legend />
+              <Bar dataKey="valor" fill="#ef4444" name="Saldo Pico" />
+              <Bar dataKey="limite" fill="#22c55e" name="Limite Permitido" />
+            </BarChart>
+          </ResponsiveContainer>
         </Card>
       )}
 

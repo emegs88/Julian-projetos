@@ -7,6 +7,7 @@ import { AbaEmpreendimento } from '@/components/simulador/AbaEmpreendimento';
 import { AbaCotas } from '@/components/simulador/AbaCotas';
 import { AbaVeiculos } from '@/components/simulador/AbaVeiculos';
 import { AbaCotasAutomoveis } from '@/components/simulador/AbaCotasAutomoveis';
+import { AbaBidCon } from '@/components/simulador/AbaBidCon';
 import { AbaEstrutura } from '@/components/simulador/AbaEstrutura';
 import { AbaGarantias } from '@/components/simulador/AbaGarantias';
 import { AbaCET } from '@/components/simulador/AbaCET';
@@ -20,11 +21,13 @@ import {
   Layers,
   Car,
   FileText,
+  ShoppingBag,
 } from 'lucide-react';
 
 const tabs = [
   { id: 'empreendimento', label: 'Empreendimento', icon: Building2 },
   { id: 'cotas', label: 'Cotas', icon: Layers },
+  { id: 'bidcon', label: 'Cotas BidCon', icon: ShoppingBag },
   { id: 'veiculos', label: 'Veículos', icon: Car },
   { id: 'cotas-automoveis', label: 'Cotas Automóveis', icon: FileText },
   { id: 'estrutura', label: 'Estrutura', icon: Calculator },
@@ -77,6 +80,7 @@ export default function SimuladorPage() {
           <div className="min-h-[400px]">
             {activeTab === 'empreendimento' && <AbaEmpreendimento />}
             {activeTab === 'cotas' && <AbaCotas />}
+            {activeTab === 'bidcon' && <AbaBidCon />}
             {activeTab === 'veiculos' && <AbaVeiculos />}
             {activeTab === 'cotas-automoveis' && <AbaCotasAutomoveis />}
             {activeTab === 'estrutura' && <AbaEstrutura />}

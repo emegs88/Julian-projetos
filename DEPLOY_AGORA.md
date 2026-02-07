@@ -1,83 +1,114 @@
-# 🚀 Deploy Agora - Guia Rápido
+# 🚀 Deploy Agora - Passo a Passo
 
-## ✅ Tudo Pronto para Deploy!
+## ⚡ Opção 1: Script Automático (Recomendado)
 
-Seu projeto está configurado e pronto para fazer deploy na Vercel.
+Execute no terminal:
 
-## 📋 Passo a Passo (2 minutos)
+```bash
+bash deploy.sh
+```
 
-### 1. Acesse a Vercel
-👉 **https://vercel.com**
+O script irá:
+1. ✅ Instalar dependências
+2. ✅ Gerar Prisma Client
+3. ✅ Testar build local
+4. ✅ Instalar Vercel CLI (se necessário)
+5. ✅ Fazer deploy para produção
 
-### 2. Faça Login
-- Clique em **"Sign Up"** ou **"Log In"**
-- Escolha **"Continue with GitHub"**
-- Autorize o acesso ao seu GitHub
+## 📋 Opção 2: Manual
 
-### 3. Importe o Projeto
-1. Clique em **"Add New Project"**
-2. Na lista de repositórios, encontre: **`emegs88/Julian-projetos`**
-3. Clique em **"Import"**
+### Passo 1: Instalar Dependências
+```bash
+npm install
+```
 
-### 4. Configure (Automático)
-A Vercel detectará automaticamente:
-- ✅ **Framework:** Next.js
-- ✅ **Build Command:** `npm run build`
-- ✅ **Output Directory:** `.next`
-- ✅ **Install Command:** `npm install`
+### Passo 2: Gerar Prisma Client
+```bash
+npx prisma generate
+```
 
-**Você não precisa mudar nada!** Apenas clique em **"Deploy"**
+### Passo 3: Testar Build
+```bash
+npm run build
+```
 
-### 5. Aguarde o Deploy
-- O build levará 2-3 minutos
-- Você verá o progresso em tempo real
-- Quando terminar, verá: **"Congratulations! Your project has been deployed."**
+### Passo 4: Instalar Vercel CLI (se necessário)
+```bash
+npm install -g vercel
+```
 
-## 🌐 Acessar sua Aplicação
+### Passo 5: Fazer Login no Vercel
+```bash
+vercel login
+```
 
-Após o deploy, você receberá uma URL como:
-- `https://julian-projetos.vercel.app`
-- Ou um domínio personalizado se configurar
+### Passo 6: Deploy
+```bash
+vercel --prod
+```
 
-## 🔄 Deploy Automático
+## 🌐 Opção 3: Via GitHub (Mais Fácil)
 
-A partir de agora:
-- ✅ **Cada push no `main`** → Deploy automático
-- ✅ **Pull Requests** → Preview deployments
+1. **Fazer commit:**
+```bash
+git add .
+git commit -m "Deploy: Sistema completo"
+git push origin main
+```
 
-## 📱 URLs da Aplicação
+2. **No Vercel:**
+   - Acesse: https://vercel.com/new
+   - Conecte seu repositório GitHub
+   - Configure:
+     - **Build Command:** `prisma generate && next build`
+     - **Install Command:** `npm install`
+   - Clique em **Deploy**
 
-Após o deploy, acesse:
-- **Landing:** `https://seu-projeto.vercel.app`
-- **Simulador:** `https://seu-projeto.vercel.app/simulador`
-- **Apresentação:** `https://seu-projeto.vercel.app/apresentacao`
+## ⚙️ Configurações Pós-Deploy
+
+### 1. Variáveis de Ambiente (Opcional)
+No Vercel Dashboard > Settings > Environment Variables:
+- `CRON_SECRET`: Secret para proteger CRON job
+
+### 2. Banco de Dados
+**⚠️ SQLite não funciona em produção no Vercel!**
+
+Use Postgres:
+1. Vercel Dashboard > Storage > Create Postgres
+2. Copie `DATABASE_URL`
+3. Atualize `prisma/schema.prisma`:
+```prisma
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+```
+4. Execute: `npx prisma migrate deploy`
+
+## ✅ Verificação
+
+Após o deploy, teste:
+- [ ] Página inicial carrega
+- [ ] Aba Empreendimento (valores R$ 67.731,22)
+- [ ] Aba Veículos (busca FIPE)
+- [ ] Cálculos funcionam
+- [ ] PDF gera corretamente
 
 ## 🆘 Problemas?
 
-### Build Falha
-- Verifique se todas as dependências estão no `package.json` ✅
-- O build na Vercel é diferente do local (ambiente limpo)
+**Erro: "Prisma Client not generated"**
+```bash
+npx prisma generate
+```
 
-### Erro de Permissão
-- Certifique-se de que o repositório está acessível
-- Verifique se você tem permissão no repositório GitHub
+**Erro: "Build failed"**
+- Verifique os logs no Vercel
+- Teste build local: `npm run build`
 
-### Precisa de Ajuda?
-- Documentação: https://vercel.com/docs
-- Suporte: https://vercel.com/support
+**Erro: "Database not found"**
+- Configure `DATABASE_URL` no Vercel
+- Use Postgres, não SQLite
 
-## ✅ Checklist Pré-Deploy
+## 📞 Ajuda
 
-- [x] Código no GitHub
-- [x] `package.json` configurado
-- [x] `next.config.js` configurado
-- [x] `vercel.json` criado
-- [x] `.gitignore` configurado
-- [x] Build local testado
-- [x] Todas as dependências no package.json
-
-## 🎯 Próximo Passo
-
-**Acesse agora:** https://vercel.com/new
-
-E faça o deploy em 2 minutos! 🚀
+Veja `README_DEPLOY.md` para mais detalhes.

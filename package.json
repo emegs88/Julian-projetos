@@ -6,7 +6,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:seed": "tsx prisma/seed.ts",
+    "postinstall": "prisma generate || true"
   },
   "dependencies": {
     "next": "14.2.5",
@@ -31,10 +35,12 @@
     "html2canvas": "^1.4.1",
     "date-fns": "^3.6.0",
     "clsx": "^2.1.1",
-    "tailwind-merge": "^2.4.0"
+    "tailwind-merge": "^2.4.0",
+    "@prisma/client": "^5.19.1"
   },
   "devDependencies": {
     "eslint": "^8.57.0",
-    "eslint-config-next": "14.2.5"
+    "eslint-config-next": "14.2.5",
+    "prisma": "^5.19.1"
   }
 }

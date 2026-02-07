@@ -14,7 +14,7 @@ import { estruturaPromissaoReferencia } from '@/data/promissao-estrutura';
 import { CustosDetalhados } from './CustosDetalhados';
 
 export function AbaEstrutura() {
-  const { estrutura, lotes, garantia, veiculos, cotasAutomoveis, cotas, usarMultiplasCotas, setEstrutura, setCalculos } = useSimuladorStore();
+  const { estrutura, lotes, garantia, veiculos, cotasAutomoveis, cotas, cotasBidCon, usarMultiplasCotas, setEstrutura, setCalculos } = useSimuladorStore();
   
   // Calcular totais das cotas se estiver usando múltiplas cotas
   const totaisCotas = usarMultiplasCotas
@@ -24,6 +24,22 @@ export function AbaEstrutura() {
         saldoDevedor: cotas.reduce((sum, c) => sum + c.saldoDevedor, 0),
       }
     : null;
+
+  // Calcular totais das cotas BidCon selecionadas
+  const totaisBidCon = cotasBidCon
+    .filter((c) => c.selecionada)
+    .reduce(
+      (acc, c) => ({
+        credito: acc.credito + c.credito,
+        parcela: acc.parcela + c.parcela,
+        liquido: acc.liquido + c.valorLiquidoAPagar,
+      }),
+      { credito: 0, parcela: 0, liquido: 0 }
+    );
+
+  // Se houver cotas BidCon selecionadas, somar ao crédito e parcela
+  const creditoTotal = estrutura.credito + (totaisBidCon.credito > 0 ? totaisBidCon.credito : 0);
+  const parcelaTotal = estrutura.parcelaMensal + (totaisBidCon.parcela > 0 ? totaisBidCon.parcela : 0);
 
   const handleCalculate = () => {
     if (estrutura.credito <= 0 || estrutura.prazoTotal <= 0) {
@@ -40,14 +56,28 @@ export function AbaEstrutura() {
   };
 
   useEffect(() => {
-    if (estrutura.credito > 0 && estrutura.prazoTotal > 0) {
-      handleCalculate();
+    // Se houver cotas BidCon selecionadas, atualizar estrutura temporariamente para cálculos
+    const estruturaCalculo = totaisBidCon.credito > 0
+      ? {
+          ...estrutura,
+          credito: creditoTotal,
+          parcelaMensal: parcelaTotal,
+        }
+      : estrutura;
+
+    if (estruturaCalculo.credito > 0 && estruturaCalculo.prazoTotal > 0) {
+      try {
+        const calculos = calcularTodos(estruturaCalculo, lotes, garantia, veiculos, cotasAutomoveis);
+        setCalculos(calculos);
+      } catch (error) {
+        console.error('Erro ao calcular:', error);
+        setCalculos(null);
+      }
     } else {
-      // Limpar cálculos se dados insuficientes
       setCalculos(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [estrutura, lotes, garantia, veiculos, cotasAutomoveis]);
+  }, [estrutura, lotes, garantia, veiculos, cotasAutomoveis, cotasBidCon, totaisBidCon.credito, creditoTotal, parcelaTotal]);
 
   // Aplicar valores de referência de Promissão se estrutura estiver vazia
   const aplicarValoresReferencia = () => {
