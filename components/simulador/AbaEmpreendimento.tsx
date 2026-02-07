@@ -10,17 +10,30 @@ export function AbaEmpreendimento() {
   const { empreendimento, lotes } = useSimuladorStore();
   const [quantidadeLotes, setQuantidadeLotes] = useState<number>(lotes.length);
 
-  // Calcular somas totais de todos os lotes
+  // Calcular somas totais baseadas no total de 226 lotes
+  // Usar valores médios dos lotes carregados e multiplicar por 226
   const somaTotal = useMemo(() => {
-    const totalMercado = lotes.reduce((sum, l) => sum + l.valorMercado, 0);
-    const totalVendaForcada = lotes.reduce((sum, l) => sum + l.valorVendaForcada, 0);
-    const totalArea = lotes.reduce((sum, l) => sum + l.area, 0);
+    if (lotes.length === 0) {
+      return {
+        valorMercado: 0,
+        valorVendaForcada: 0,
+        area: 0,
+      };
+    }
+    
+    // Calcular valores médios dos lotes carregados
+    const valorMedioMercado = lotes.reduce((sum, l) => sum + l.valorMercado, 0) / lotes.length;
+    const valorMedioVendaForcada = lotes.reduce((sum, l) => sum + l.valorVendaForcada, 0) / lotes.length;
+    const areaMedia = lotes.reduce((sum, l) => sum + l.area, 0) / lotes.length;
+    
+    // Multiplicar pelos 226 lotes totais
+    const totalLotes = empreendimento.quantidadeLotesTotal || 226;
     return {
-      valorMercado: totalMercado,
-      valorVendaForcada: totalVendaForcada,
-      area: totalArea,
+      valorMercado: valorMedioMercado * totalLotes,
+      valorVendaForcada: valorMedioVendaForcada * totalLotes,
+      area: areaMedia * totalLotes,
     };
-  }, [lotes]);
+  }, [lotes, empreendimento.quantidadeLotesTotal]);
 
   // Sincronizar quantidade inicial quando lotes mudarem
   useEffect(() => {
@@ -97,8 +110,13 @@ export function AbaEmpreendimento() {
         </div>
         <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
           <p className="text-sm text-gray-600 mb-2">
-            <strong>Total de Lotes:</strong> {lotes.length} lote(s) cadastrado(s)
+            <strong>Total de Lotes:</strong> {empreendimento.quantidadeLotesTotal || 226} lote(s) cadastrado(s)
           </p>
+          {lotes.length < (empreendimento.quantidadeLotesTotal || 226) && (
+            <p className="text-xs text-gray-500 mt-1">
+              (Exibindo {lotes.length} lote(s) de exemplo para visualização)
+            </p>
+          )}
         </div>
       </Card>
 
@@ -169,7 +187,10 @@ export function AbaEmpreendimento() {
             </table>
           </div>
           <div className="mt-4 text-sm text-gray-600">
-            Exibindo <strong>{lotesExibidos.length}</strong> de <strong>{lotes.length}</strong> lote(s) cadastrado(s)
+            Exibindo <strong>{lotesExibidos.length}</strong> de <strong>{lotes.length}</strong> lote(s) de exemplo
+            {empreendimento.quantidadeLotesTotal && empreendimento.quantidadeLotesTotal > lotes.length && (
+              <span className="text-gray-500"> (Total: {empreendimento.quantidadeLotesTotal} lotes)</span>
+            )}
           </div>
         </Card>
       ) : (
