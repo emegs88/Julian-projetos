@@ -46,10 +46,13 @@ export function AbaVeiculos() {
   }, []);
 
   // Carregar veículos do cliente da API
-  const carregarVeiculosCliente = async () => {
+  const carregarVeiculosCliente = async (buscarCodigos: boolean = false) => {
     setLoadingVeiculosCliente(true);
     try {
-      const response = await fetch('/api/fipe/veiculos');
+      const url = buscarCodigos 
+        ? '/api/fipe/veiculos?buscar_codigos=true'
+        : '/api/fipe/veiculos';
+      const response = await fetch(url);
       if (!response.ok) throw new Error('Erro ao carregar veículos');
       const data = await response.json();
       setVeiculosCliente(data);
@@ -91,11 +94,12 @@ export function AbaVeiculos() {
     }
   };
 
-  // Atualizar FIPE (forçar atualização)
+  // Atualizar FIPE (forçar atualização e buscar códigos automaticamente)
   const handleAtualizarFIPE = async () => {
     setLoadingVeiculosCliente(true);
     try {
-      const response = await fetch('/api/fipe/veiculos?atualizar=true');
+      // Buscar códigos FIPE automaticamente e atualizar valores
+      const response = await fetch('/api/fipe/veiculos?atualizar=true&buscar_codigos=true');
       if (!response.ok) throw new Error('Erro ao atualizar FIPE');
       const data = await response.json();
       setVeiculosCliente(data);
