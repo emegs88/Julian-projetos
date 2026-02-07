@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
 import { Lote } from '@/types';
+import { parseBRLToNumber, safeNumber, normalizeHeader, mapColumnName, validateLote, calculateVendaForcada } from '@/lib/parsing';
 
 export interface MapeamentoColunas {
   id?: string;
@@ -57,18 +58,14 @@ export function detectarColunas(worksheet: XLSX.WorkSheet): MapeamentoColunas {
 }
 
 /**
- * Converte valor do Excel para número
+ * Converte valor do Excel para número (usando parsing robusto)
  */
 function parseValor(valor: any): number {
-  if (typeof valor === 'number') return valor;
+  if (typeof valor === 'number') {
+    return safeNumber(valor, 0);
+  }
   if (typeof valor === 'string') {
-    // Remove formatação BR (R$, pontos, vírgulas)
-    const limpo = valor
-      .replace(/R\$/g, '')
-      .replace(/\./g, '')
-      .replace(',', '.')
-      .trim();
-    return parseFloat(limpo) || 0;
+    return parseBRLToNumber(valor);
   }
   return 0;
 }
@@ -107,57 +104,106 @@ export function importarLotesExcel(
           return;
         }
         
-        // Primeira linha são os cabeçalhos
-        const cabecalhos = dados[0].map((h: any) => String(h || '').toLowerCase().trim());
+        // Primeira linha são os cabeçalhos - usar normalização robusta
+        const cabecalhos = dados[0].map((h: any) => String(h || '').trim());
+        const cabecalhosNormalizados = cabecalhos.map(normalizeHeader);
         
-        // Encontrar índices das colunas
-        const indiceId = mapeamentoFinal.id 
-          ? parseInt(mapeamentoFinal.id)
-          : cabecalhos.findIndex((h: string) => h.includes('id') || h.includes('lote') || h.includes('código'));
-        const indiceMatricula = mapeamentoFinal.matricula
-          ? parseInt(mapeamentoFinal.matricula)
-          : cabecalhos.findIndex((h: string) => h.includes('matrícula') || h.includes('matricula') || h.includes('registro'));
-        const indiceArea = mapeamentoFinal.area
-          ? parseInt(mapeamentoFinal.area)
-          : cabecalhos.findIndex((h: string) => h.includes('área') || h.includes('area') || h.includes('m²'));
-        const indiceValorMercado = mapeamentoFinal.valorMercado
-          ? parseInt(mapeamentoFinal.valorMercado)
-          : cabecalhos.findIndex((h: string) => h.includes('mercado') || h.includes('avaliação') || h.includes('avaliacao'));
-        const indiceVendaForcada = mapeamentoFinal.valorVendaForcada
-          ? parseInt(mapeamentoFinal.valorVendaForcada)
-          : cabecalhos.findIndex((h: string) => h.includes('venda forçada') || h.includes('venda forcada') || h.includes('forçada'));
-        const indiceObservacoes = mapeamentoFinal.observacoes
-          ? parseInt(mapeamentoFinal.observacoes)
-          : cabecalhos.findIndex((h: string) => h.includes('obs') || h.includes('observação') || h.includes('observacao'));
+        // Encontrar índices das colunas usando mapeamento inteligente
+        const encontrarIndice = (nomePadrao: string, fallbackKeywords: string[]): number => {
+          // Tentar mapeamento fornecido primeiro
+          if (mapeamentoFinal[nomePadrao as keyof MapeamentoColunas]) {
+            const coluna = mapeamentoFinal[nomePadrao as keyof MapeamentoColunas];
+            if (coluna) {
+              const indice = XLSX.utils.decode_col(coluna);
+              if (indice >= 0) return indice;
+            }
+          }
+          
+          // Tentar mapeamento automático
+          for (let i = 0; i < cabecalhosNormalizados.length; i++) {
+            const mapped = mapColumnName(cabecalhos[i]);
+            if (mapped === nomePadrao) {
+              return i;
+            }
+          }
+          
+          // Fallback: buscar por palavras-chave
+          for (let i = 0; i < cabecalhosNormalizados.length; i++) {
+            const header = cabecalhosNormalizados[i];
+            if (fallbackKeywords.some(keyword => header.includes(normalizeHeader(keyword)))) {
+              return i;
+            }
+          }
+          
+          return -1;
+        };
+        
+        const indiceId = encontrarIndice('id', ['id', 'lote', 'codigo', 'numero']);
+        const indiceMatricula = encontrarIndice('matricula', ['matricula', 'registro', 'mat']);
+        const indiceArea = encontrarIndice('area', ['area', 'm2', 'metros']);
+        const indiceValorMercado = encontrarIndice('valor_mercado', ['mercado', 'avaliacao', 'valor']);
+        const indiceVendaForcada = encontrarIndice('valor_venda_forcada', ['venda_forcada', 'forcada', 'vf']);
+        const indiceObservacoes = encontrarIndice('observacoes', ['obs', 'observacao', 'nota']);
         
         const lotes: Lote[] = [];
         
-        // Processar linhas de dados (pular cabeçalho)
+        // Processar linhas de dados (pular cabeçalho e linhas vazias)
+        let linhasValidas = 0;
+        let linhasIgnoradas = 0;
+        const erros: string[] = [];
+        
         for (let i = 1; i < dados.length; i++) {
           const linha = dados[i];
           
-          const id = indiceId >= 0 ? linha[indiceId] : `LOTE-${i}`;
-          const matricula = indiceMatricula >= 0 ? linha[indiceMatricula] : '';
+          // Pular linhas completamente vazias
+          if (!linha || linha.every((cell: any) => !cell || String(cell).trim() === '')) {
+            continue;
+          }
+          
+          const id = indiceId >= 0 ? String(linha[indiceId] || '').trim() : `LOTE-${String(i).padStart(3, '0')}`;
+          const matricula = indiceMatricula >= 0 ? String(linha[indiceMatricula] || '').trim() : '';
           const area = indiceArea >= 0 ? parseValor(linha[indiceArea]) : 0;
           const valorMercado = indiceValorMercado >= 0 ? parseValor(linha[indiceValorMercado]) : 0;
-          const valorVendaForcada = indiceVendaForcada >= 0 
-            ? parseValor(linha[indiceVendaForcada])
-            : valorMercado * (percentualVendaForcada / 100);
-          const observacoes = indiceObservacoes >= 0 ? String(linha[indiceObservacoes] || '') : '';
+          const valorVendaForcadaRaw = indiceVendaForcada >= 0 ? parseValor(linha[indiceVendaForcada]) : null;
+          const valorVendaForcada = calculateVendaForcada(valorMercado, valorVendaForcadaRaw, percentualVendaForcada / 100);
+          const observacoes = indiceObservacoes >= 0 ? String(linha[indiceObservacoes] || '').trim() : '';
           
-          // Validar dados mínimos
-          if (!id || area <= 0 || valorMercado <= 0) {
-            continue; // Pular linha inválida
+          // Validar lote usando função robusta
+          const validacao = validateLote({ valorMercado, valorVendaForcada });
+          
+          if (!validacao.valid) {
+            linhasIgnoradas++;
+            erros.push(`Linha ${i + 1} (ID: ${id}): ${validacao.error}`);
+            continue;
+          }
+          
+          // Validar dados mínimos adicionais
+          if (!id || id === 'LOTE-000' || area <= 0) {
+            linhasIgnoradas++;
+            erros.push(`Linha ${i + 1}: ID ou área inválidos`);
+            continue;
           }
           
           lotes.push({
-            id: String(id).trim(),
-            matricula: String(matricula || '').trim(),
-            area,
-            valorMercado,
-            valorVendaForcada,
+            id,
+            matricula: matricula || undefined,
+            area: safeNumber(area, 0),
+            valorMercado: safeNumber(valorMercado, 0),
+            valorVendaForcada: safeNumber(valorVendaForcada, 0),
             observacoes: observacoes || undefined,
           });
+          
+          linhasValidas++;
+        }
+        
+        // Log de avisos (sem quebrar a importação)
+        if (linhasIgnoradas > 0) {
+          console.warn(`Importação: ${linhasIgnoradas} linha(s) ignorada(s)`, erros);
+        }
+        
+        if (lotes.length === 0) {
+          reject(new Error('Nenhum lote válido foi encontrado no arquivo. Verifique os dados.'));
+          return;
         }
         
         resolve({ lotes, mapeamento: mapeamentoFinal });

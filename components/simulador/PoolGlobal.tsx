@@ -11,6 +11,7 @@ export function PoolGlobal() {
   const {
     lotes,
     veiculos,
+    cotasAutomoveis,
     garantia,
     calculos,
   } = useSimuladorStore();
@@ -24,14 +25,20 @@ export function PoolGlobal() {
       return sum + valor;
     }, 0);
 
-    // Pool Veículos (FIPE * 1.30)
+    // Pool Veículos (FIPE * 1.30) + Cotas Automóveis
     const veiculosIncluidos = garantia.usarVeiculos
       ? veiculos.filter((v) => garantia.veiculosSelecionados.includes(v.id))
       : [];
+    const cotasAutomoveisIncluidas = garantia.usarVeiculos
+      ? cotasAutomoveis.filter((c) => garantia.veiculosSelecionados.includes(c.id))
+      : [];
+    
     const poolVeiculos = veiculosIncluidos.reduce((sum, v) => sum + v.valorGarantia, 0);
+    const poolCotasAutomoveis = cotasAutomoveisIncluidas.reduce((sum, c) => sum + c.valorGarantia, 0);
+    const poolVeiculosTotal = poolVeiculos + poolCotasAutomoveis;
 
-    // Pool Total
-    const poolTotal = poolLotes + poolVeiculos;
+    // Pool Total = Lotes + Veículos + Cotas Automóveis
+    const poolTotal = poolLotes + poolVeiculosTotal;
 
     // Limite
     const limite = calcularLimiteSaldo(poolTotal, garantia.ltvMaximo);
@@ -52,7 +59,7 @@ export function PoolGlobal() {
 
     return {
       poolLotes,
-      poolVeiculos,
+      poolVeiculos: poolVeiculosTotal,
       poolTotal,
       limite,
       saldoPico,
@@ -60,9 +67,9 @@ export function PoolGlobal() {
       status,
       percentualCobertura,
       quantidadeLotes: lotesSelecionados.length,
-      quantidadeVeiculos: veiculosIncluidos.length,
+      quantidadeVeiculos: veiculosIncluidos.length + cotasAutomoveisIncluidas.length,
     };
-  }, [lotes, veiculos, garantia, calculos]);
+  }, [lotes, veiculos, cotasAutomoveis, garantia, calculos]);
 
   const StatusIcon = poolGlobal.status.icon;
 
@@ -158,14 +165,49 @@ export function PoolGlobal() {
         </div>
       </div>
 
-      {/* Alerta se necessário */}
+      {/* Alerta se necessário - PARTE F: UI Premium Prospere */}
       {poolGlobal.saldoPico > poolGlobal.limite && (
-        <div className="mt-4 p-4 bg-red-100 border-2 border-red-400 rounded-lg">
-          <p className="font-semibold text-red-800 mb-1">⚠️ Garantia Insuficiente</p>
-          <p className="text-sm text-red-700">
-            Faltam <strong>{formatBRL(poolGlobal.saldoPico - poolGlobal.limite)}</strong> em garantia.
-            Sugestão: adicionar mais lotes ou veículos ao pool.
-          </p>
+        <div className="mt-4 p-6 bg-red-50 border-4 border-red-500 rounded-xl shadow-lg">
+          <div className="flex items-start gap-3">
+            <XCircle className="w-6 h-6 text-red-600 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="font-bold text-lg text-red-800 mb-2">⚠️ Garantia Insuficiente</p>
+              <p className="text-base text-red-700 mb-2">
+                Faltam <strong className="text-xl">{formatBRL(poolGlobal.saldoPico - poolGlobal.limite)}</strong> em garantia para cobrir o saldo devedor pico.
+              </p>
+              <p className="text-sm text-red-600 font-medium">
+                💡 Sugestão: Adicione mais lotes ou veículos ao pool, ou reduza o valor da operação.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {poolGlobal.folga > 0 && poolGlobal.saldoPico <= poolGlobal.limite && (
+        <div className={`mt-4 p-4 rounded-lg border-2 ${
+          poolGlobal.status.cor === 'verde'
+            ? 'bg-green-50 border-green-300'
+            : 'bg-yellow-50 border-yellow-300'
+        }`}>
+          <div className="flex items-start gap-3">
+            {poolGlobal.status.cor === 'verde' ? (
+              <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+            ) : (
+              <AlertTriangle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+            )}
+            <div className="flex-1">
+              <p className={`font-semibold ${
+                poolGlobal.status.cor === 'verde' ? 'text-green-800' : 'text-yellow-800'
+              }`}>
+                {poolGlobal.status.cor === 'verde' ? '✅' : '⚠️'} Folga de Garantia
+              </p>
+              <p className={`text-sm mt-1 ${
+                poolGlobal.status.cor === 'verde' ? 'text-green-700' : 'text-yellow-700'
+              }`}>
+                Há uma folga de <strong>{formatBRL(poolGlobal.folga)}</strong> entre o saldo pico e o limite permitido.
+              </p>
+            </div>
+          </div>
         </div>
       )}
     </Card>

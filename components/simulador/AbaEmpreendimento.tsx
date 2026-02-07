@@ -1,48 +1,38 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useSimuladorStore } from '@/store/useSimuladorStore';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
-import { Button } from '@/components/ui/Button';
-import { Alert } from '@/components/ui/Alert';
-import { Lote } from '@/types';
 import { formatBRL, formatNumber } from '@/lib/utils';
-import { InfoPromissao } from './InfoPromissao';
-import { importarLotesExcel } from '@/lib/importarExcel';
-import { Upload, FileSpreadsheet } from 'lucide-react';
 
 export function AbaEmpreendimento() {
-  const { empreendimento, lotes, setEmpreendimento, setLotes } = useSimuladorStore();
-  const [uploading, setUploading] = useState(false);
-  const [uploadError, setUploadError] = useState<string | null>(null);
-  const [uploadSuccess, setUploadSuccess] = useState(false);
-  
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    
-    if (!file.name.endsWith('.xlsx') && !file.name.endsWith('.xls')) {
-      setUploadError('Por favor, selecione um arquivo Excel (.xlsx ou .xls)');
-      return;
+  const { empreendimento, lotes } = useSimuladorStore();
+  const [quantidadeLotes, setQuantidadeLotes] = useState<number>(lotes.length);
+
+  // Calcular somas totais de todos os lotes
+  const somaTotal = useMemo(() => {
+    const totalMercado = lotes.reduce((sum, l) => sum + l.valorMercado, 0);
+    const totalVendaForcada = lotes.reduce((sum, l) => sum + l.valorVendaForcada, 0);
+    const totalArea = lotes.reduce((sum, l) => sum + l.area, 0);
+    return {
+      valorMercado: totalMercado,
+      valorVendaForcada: totalVendaForcada,
+      area: totalArea,
+    };
+  }, [lotes]);
+
+  // Sincronizar quantidade inicial quando lotes mudarem
+  useEffect(() => {
+    if (quantidadeLotes > lotes.length) {
+      setQuantidadeLotes(lotes.length);
     }
-    
-    setUploading(true);
-    setUploadError(null);
-    setUploadSuccess(false);
-    
-    try {
-      const { lotes: lotesImportados } = await importarLotesExcel(file, undefined, 70);
-      setLotes(lotesImportados);
-      setUploadSuccess(true);
-      setTimeout(() => setUploadSuccess(false), 3000);
-    } catch (error) {
-      console.error('Erro ao importar Excel:', error);
-      setUploadError(error instanceof Error ? error.message : 'Erro ao importar o arquivo Excel');
-    } finally {
-      setUploading(false);
-    }
-  };
+  }, [lotes.length, quantidadeLotes]);
+
+  // Filtrar lotes baseado na quantidade selecionada
+  const lotesExibidos = useMemo(() => {
+    return lotes.slice(0, quantidadeLotes);
+  }, [lotes, quantidadeLotes]);
 
   return (
     <div className="space-y-6">
@@ -89,51 +79,60 @@ export function AbaEmpreendimento() {
         </div>
       </Card>
       
-      {/* Importação Excel - Atualizar Avaliação */}
-      <Card title="Atualizar Avaliação de Lotes">
-        <div className="space-y-4">
-          <Alert variant="info">
-            Carregue o arquivo Excel "Avaliação Lote Promissão - Lotes.xlsx" para atualizar os dados de avaliação dos lotes.
-            Os dados serão usados automaticamente na aba Garantias.
-          </Alert>
-          
-          <div className="flex items-center gap-4">
-            <label className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg cursor-pointer hover:bg-primary-dark transition-colors">
-              <Upload className="w-5 h-5" />
-              <span className="font-medium">Selecionar Arquivo Excel</span>
-              <input
-                type="file"
-                accept=".xlsx,.xls"
-                onChange={handleFileUpload}
-                className="hidden"
-                disabled={uploading}
-              />
-            </label>
-            
-            {uploading && (
-              <div className="text-sm text-gray-600">
-                <span className="animate-pulse">Importando...</span>
-              </div>
-            )}
-            
-            {uploadSuccess && (
-              <div className="text-sm text-green-600 font-semibold">
-                ✅ {lotes.length} lote(s) atualizado(s) com sucesso!
-              </div>
-            )}
+      {/* Resumo Total dos Lotes */}
+      <Card title="Resumo Total dos Lotes">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+          <div className="bg-white p-4 rounded-lg border-2 border-gray-300">
+            <p className="text-sm text-gray-600 mb-1">Valor Total Mercado</p>
+            <p className="text-2xl font-bold text-gray-900">{formatBRL(somaTotal.valorMercado)}</p>
           </div>
-          
-          {uploadError && (
-            <Alert variant="error">
-              <p className="font-semibold">Erro ao importar:</p>
-              <p className="text-sm">{uploadError}</p>
-            </Alert>
-          )}
+          <div className="bg-white p-4 rounded-lg border-2 border-gray-300">
+            <p className="text-sm text-gray-600 mb-1">Valor Total Venda Forçada</p>
+            <p className="text-2xl font-bold text-gray-900">{formatBRL(somaTotal.valorVendaForcada)}</p>
+          </div>
+          <div className="bg-white p-4 rounded-lg border-2 border-gray-300">
+            <p className="text-sm text-gray-600 mb-1">Área Total</p>
+            <p className="text-2xl font-bold text-gray-900">{formatNumber(somaTotal.area, 2)} m²</p>
+          </div>
+        </div>
+        <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+          <p className="text-sm text-gray-600 mb-2">
+            <strong>Total de Lotes:</strong> {lotes.length} lote(s) cadastrado(s)
+          </p>
+        </div>
+      </Card>
+
+      {/* Seletor de Quantidade de Lotes */}
+      <Card title="Visualização de Lotes">
+        <div className="space-y-4">
+          <div className="flex items-center gap-4">
+            <label className="text-sm font-medium text-gray-700">
+              Quantidade de Lotes a Exibir:
+            </label>
+            <Input
+              type="number"
+              min="1"
+              max={lotes.length}
+              value={quantidadeLotes.toString()}
+              onChange={(e) => {
+                const value = parseInt(e.target.value, 10);
+                if (!isNaN(value) && value >= 1 && value <= lotes.length) {
+                  setQuantidadeLotes(value);
+                } else if (e.target.value === '') {
+                  setQuantidadeLotes(1);
+                }
+              }}
+              className="w-32"
+            />
+            <span className="text-sm text-gray-500">
+              de {lotes.length} lotes disponíveis
+            </span>
+          </div>
         </div>
       </Card>
 
 
-      {lotes.length > 0 ? (
+      {lotesExibidos.length > 0 ? (
         <Card title="Tabela de Lotes">
           <div className="overflow-x-auto">
             <table className="w-full border-collapse">
@@ -148,7 +147,7 @@ export function AbaEmpreendimento() {
                 </tr>
               </thead>
               <tbody>
-                {lotes.map((lote) => (
+                {lotesExibidos.map((lote) => (
                   <tr key={lote.id} className="hover:bg-gray-50 transition-colors">
                     <td className="border border-gray-300 px-4 py-2 font-medium">{lote.id}</td>
                     <td className="border border-gray-300 px-4 py-2">{lote.matricula}</td>
@@ -170,7 +169,7 @@ export function AbaEmpreendimento() {
             </table>
           </div>
           <div className="mt-4 text-sm text-gray-600">
-            Total: <strong>{lotes.length}</strong> lote(s) cadastrado(s)
+            Exibindo <strong>{lotesExibidos.length}</strong> de <strong>{lotes.length}</strong> lote(s) cadastrado(s)
           </div>
         </Card>
       ) : (

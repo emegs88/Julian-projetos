@@ -5,16 +5,28 @@ import { calculateIRR } from './irr';
  * Calcula o valor líquido disponível
  */
 export function calcularValorLiquido(estrutura: EstruturaOperacao): number {
+  // Validar entrada
+  if (!estrutura || typeof estrutura.credito !== 'number' || isNaN(estrutura.credito)) {
+    return 0;
+  }
+
   const custosTotais = 
     (estrutura.custoDocumentacao || 0) +
     (estrutura.custoRegistro || 0) +
     (estrutura.custoITBI || 0) +
     (estrutura.custoComissoes || 0) +
     (estrutura.custoOutros || 0);
-  const desagio = (estrutura.credito * estrutura.desagio) / 100;
-  const intermediacao = (estrutura.credito * estrutura.taxaIntermediacao) / 100;
+  const desagio = (estrutura.credito * (estrutura.desagio || 0)) / 100;
+  const intermediacao = (estrutura.credito * (estrutura.taxaIntermediacao || 0)) / 100;
   
-  return estrutura.credito - estrutura.entrada - custosTotais - desagio - intermediacao;
+  const valorLiquido = estrutura.credito - (estrutura.entrada || 0) - custosTotais - desagio - intermediacao;
+  
+  // Proteção contra valores inválidos
+  if (isNaN(valorLiquido) || !isFinite(valorLiquido)) {
+    return 0;
+  }
+  
+  return Math.max(0, valorLiquido);
 }
 
 /**
@@ -35,12 +47,12 @@ export function calcularTotalCustos(estrutura: EstruturaOperacao): number {
  */
 export function calcularCronograma(estrutura: EstruturaOperacao): CronogramaMes[] {
   const cronograma: CronogramaMes[] = [];
-  const prazo = estrutura.prazoTotal;
-  const credito = estrutura.credito;
-  const parcela = estrutura.parcelaMensal;
+  const prazo = Math.max(0, Math.floor(estrutura.prazoTotal || 0));
+  const credito = Math.max(0, estrutura.credito || 0);
+  const parcela = Math.max(0, estrutura.parcelaMensal || 0);
   
   // Validar entradas
-  if (prazo <= 0 || credito <= 0) {
+  if (prazo <= 0 || credito <= 0 || isNaN(prazo) || isNaN(credito) || !isFinite(prazo) || !isFinite(credito)) {
     return [{
       mes: 0,
       saldoDevedor: 0,
@@ -53,14 +65,28 @@ export function calcularCronograma(estrutura: EstruturaOperacao): CronogramaMes[
   
   // Taxa mensal (assumindo taxa de administração anual)
   let taxaMensal = 0;
-  if (estrutura.taxaAdministracaoTipo === 'anual') {
-    taxaMensal = Math.pow(1 + estrutura.taxaAdministracao / 100, 1 / 12) - 1;
-  } else {
-    taxaMensal = estrutura.taxaAdministracao / 100 / prazo;
+  const taxaAdm = Math.max(0, estrutura.taxaAdministracao || 0);
+  if (estrutura.taxaAdministracaoTipo === 'anual' && taxaAdm > 0) {
+    taxaMensal = Math.pow(1 + taxaAdm / 100, 1 / 12) - 1;
+    if (isNaN(taxaMensal) || !isFinite(taxaMensal)) {
+      taxaMensal = 0;
+    }
+  } else if (prazo > 0) {
+    taxaMensal = taxaAdm / 100 / prazo;
+    if (isNaN(taxaMensal) || !isFinite(taxaMensal)) {
+      taxaMensal = 0;
+    }
   }
   
   // Saldo devedor inicial = crédito menos entrada (entrada é descontada do crédito)
-  let saldoDevedor = Math.max(0, credito - estrutura.entrada);
+  // IMPORTANTE: A entrada reduz o saldo devedor inicial
+  const entrada = Math.max(0, estrutura.entrada || 0);
+  let saldoDevedor = Math.max(0, credito - entrada);
+  
+  // Validar que saldo inicial é positivo
+  if (saldoDevedor <= 0 && credito > 0) {
+    console.warn('⚠️ Saldo devedor inicial é zero ou negativo. Entrada pode estar igual ou maior que o crédito.');
+  }
   
   for (let mes = 0; mes <= prazo; mes++) {
     if (mes === 0) {
@@ -76,16 +102,37 @@ export function calcularCronograma(estrutura: EstruturaOperacao): CronogramaMes[
     }
     
     const saldoInicial = saldoDevedor;
-    const juros = saldoDevedor * taxaMensal;
     
-    // Verificar se o cliente já começou a pagar
+    // Calcular juros sobre o saldo devedor
+    const juros = Math.max(0, saldoDevedor * taxaMensal);
+    
+    // Verificar se o cliente já começou a pagar (carência)
     let parcelaPaga = 0;
-    if (!estrutura.pagamentoAposAprovado || mes >= estrutura.mesInicioPagamento) {
+    const mesInicio = Math.max(1, estrutura.mesInicioPagamento || 1); // Mínimo mês 1
+    
+    // Se pagamentoAposAprovado = true, só paga a partir do mesInicio
+    // Se pagamentoAposAprovado = false, paga desde o mês 1
+    if (!estrutura.pagamentoAposAprovado || mes >= mesInicio) {
       parcelaPaga = parcela;
     }
     
-    const amortizacao = parcelaPaga - juros;
+    // Amortização = parcela - juros (se parcela > juros)
+    const amortizacao = Math.max(0, parcelaPaga - juros);
+    
+    // Atualizar saldo devedor
     saldoDevedor = Math.max(0, saldoDevedor - amortizacao);
+    
+    // Validar consistência: se parcela < juros, saldo aumenta (não amortiza)
+    if (parcelaPaga > 0 && parcelaPaga < juros) {
+      // Cliente paga menos que os juros, saldo aumenta
+      // Isso é válido em alguns casos, mas pode indicar problema
+      console.warn(`⚠️ Mês ${mes}: Parcela (${parcelaPaga}) menor que juros (${juros}). Saldo pode aumentar.`);
+    }
+    
+    // Proteção contra valores inválidos
+    if (isNaN(saldoDevedor) || !isFinite(saldoDevedor)) {
+      saldoDevedor = 0;
+    }
     
     cronograma.push({
       mes,
@@ -102,6 +149,9 @@ export function calcularCronograma(estrutura: EstruturaOperacao): CronogramaMes[
 
 /**
  * Calcula o fluxo de caixa
+ * PARTE C: Validação de sinais financeiros
+ * - Entrada de recurso (líquido) deve ser POSITIVO (para o projeto)
+ * - Pagamentos do cliente devem ser NEGATIVOS (saída de caixa do projeto)
  */
 export function calcularFluxoCaixa(
   estrutura: EstruturaOperacao,
@@ -119,23 +169,56 @@ export function calcularFluxoCaixa(
     let saida = 0;
     
     if (mes === 0) {
-      entrada = valorLiquido;
+      // Mês 0: Entrada do recurso líquido (POSITIVO para o projeto)
+      entrada = Math.max(0, valorLiquido);
+      
+      // Validar que entrada é positiva
+      if (entrada <= 0) {
+        console.warn('⚠️ Valor líquido é zero ou negativo. Verifique a estrutura da operação.');
+      }
     }
     
-    // Parcelas pagas pelo cliente (negativas no fluxo)
-    saida = -cronograma[i].parcela;
+    // Parcelas pagas pelo cliente (NEGATIVAS no fluxo - saída de caixa do projeto)
+    // O cliente paga, então é saída para o projeto
+    saida = -Math.max(0, cronograma[i].parcela);
     
-    // Custos pontuais (se houver)
-    // TODO: adicionar custos pontuais em meses específicos
+    // Custos pontuais em meses específicos (se implementado no futuro)
+    // Exemplo: custo de renovação no mês 12, custo de vistoria no mês 6, etc.
+    // const custosPontuais = estrutura.custosPontuais?.[mes] || 0;
+    // saida -= custosPontuais;
+    
+    // Validar sinais
+    // entrada deve ser >= 0 (recebe recurso)
+    // saida deve ser <= 0 (paga)
+    if (entrada < 0) {
+      console.warn(`⚠️ Mês ${mes}: Entrada negativa detectada. Corrigindo para 0.`);
+      entrada = 0;
+    }
+    
+    if (saida > 0) {
+      console.warn(`⚠️ Mês ${mes}: Saída positiva detectada. Corrigindo para negativa.`);
+      saida = -Math.abs(saida);
+    }
     
     saldoAcumulado += entrada + saida;
     
+    // Proteção contra valores inválidos
+    if (isNaN(saldoAcumulado) || !isFinite(saldoAcumulado)) {
+      saldoAcumulado = 0;
+    }
+    
     fluxo.push({
       mes,
-      entrada,
-      saida,
+      entrada: Math.max(0, entrada), // Garantir >= 0
+      saida: Math.min(0, saida), // Garantir <= 0
       saldo: saldoAcumulado,
     });
+  }
+  
+  // Validação final do fluxo
+  const primeiraEntrada = fluxo.find(f => f.entrada > 0);
+  if (!primeiraEntrada) {
+    console.warn('⚠️ Nenhuma entrada de recurso detectada no fluxo de caixa.');
   }
   
   return fluxo;
@@ -150,6 +233,11 @@ export function calcularValorGarantia(
   veiculos?: Veiculo[],
   cotasAutomoveis?: CotaAutomovel[]
 ): number {
+  // Validar entradas
+  if (!lotes || !garantia) {
+    return 0;
+  }
+
   let valorLotes = 0;
   let valorVeiculos = 0;
   let valorCotasAutomoveis = 0;
@@ -191,14 +279,32 @@ export function calcularValorGarantia(
     }, 0);
   }
 
-  return valorLotes + valorVeiculos + valorCotasAutomoveis;
+  const total = valorLotes + valorVeiculos + valorCotasAutomoveis;
+  
+  // Proteção contra valores inválidos
+  if (isNaN(total) || !isFinite(total)) {
+    return 0;
+  }
+  
+  return Math.max(0, total);
 }
 
 /**
  * Calcula o limite de saldo baseado no LTV
  */
 export function calcularLimiteSaldo(valorGarantia: number, ltvMaximo: number): number {
-  return (valorGarantia * ltvMaximo) / 100;
+  // Validar entradas
+  if (isNaN(valorGarantia) || isNaN(ltvMaximo) || !isFinite(valorGarantia) || !isFinite(ltvMaximo)) {
+    return 0;
+  }
+  
+  const limite = (Math.max(0, valorGarantia) * Math.max(0, Math.min(100, ltvMaximo))) / 100;
+  
+  if (isNaN(limite) || !isFinite(limite)) {
+    return 0;
+  }
+  
+  return Math.max(0, limite);
 }
 
 /**
@@ -211,12 +317,22 @@ export function encontrarSaldoPico(cronograma: CronogramaMes[]): {
   let saldoPico = 0;
   let mesSaldoPico = 0;
   
+  if (!cronograma || cronograma.length === 0) {
+    return { saldoPico: 0, mesSaldoPico: 0 };
+  }
+  
   cronograma.forEach((item) => {
-    if (item.saldoDevedor > saldoPico) {
-      saldoPico = item.saldoDevedor;
-      mesSaldoPico = item.mes;
+    const saldo = Math.max(0, item.saldoDevedor || 0);
+    if (!isNaN(saldo) && isFinite(saldo) && saldo > saldoPico) {
+      saldoPico = saldo;
+      mesSaldoPico = item.mes || 0;
     }
   });
+  
+  // Proteção final
+  if (isNaN(saldoPico) || !isFinite(saldoPico)) {
+    saldoPico = 0;
+  }
   
   return { saldoPico, mesSaldoPico };
 }

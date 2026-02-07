@@ -16,11 +16,6 @@ export function Footer() {
             <h4 className="font-semibold mb-4">Navegação</h4>
             <ul className="space-y-2 text-sm text-gray-400">
               <li>
-                <Link href="/" className="hover:text-white">
-                  Home
-                </Link>
-              </li>
-              <li>
                 <Link href="/simulador" className="hover:text-white">
                   Simulador
                 </Link>

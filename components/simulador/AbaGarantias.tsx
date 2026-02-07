@@ -144,31 +144,58 @@ export function AbaGarantias() {
       : 'SEGURO';
 
   // Selecionar mínimo necessário com estratégias
+  // PARTE E: Algoritmo robusto de seleção mínima
   const handleSelecionarMinimo = () => {
     if (saldoPico <= 0) {
       alert('⚠️ Configure a operação primeiro para calcular o saldo devedor pico.');
       return;
     }
 
-    const limiteNecessario = saldoPico / (garantia.ltvMaximo / 100);
+    // Validar LTV
+    if (garantia.ltvMaximo <= 0 || garantia.ltvMaximo > 100) {
+      alert('⚠️ LTV máximo deve estar entre 1% e 100%.');
+      return;
+    }
+
+    // Calcular valor de garantia necessário
+    // limite = pool * LTV => pool necessário = saldoPico / LTV
+    const valorGarantiaNecessario = saldoPico / (garantia.ltvMaximo / 100);
     
     // Ordenar lotes por valor (baseado na estratégia escolhida)
     const lotesOrdenados = [...lotes].sort((a, b) => {
       const valorA = garantia.criterioAvaliacao === 'mercado' ? a.valorMercado : a.valorVendaForcada;
       const valorB = garantia.criterioAvaliacao === 'mercado' ? b.valorMercado : b.valorVendaForcada;
+      
+      // Validar valores
+      if (isNaN(valorA) || !isFinite(valorA) || valorA <= 0) return 1;
+      if (isNaN(valorB) || !isFinite(valorB) || valorB <= 0) return -1;
+      
       return estrategiaSelecao === 'maior-primeiro' ? valorB - valorA : valorA - valorB;
     });
 
-    // Somar até cobrir o limite necessário
+    // Filtrar lotes válidos
+    const lotesValidos = lotesOrdenados.filter((l) => {
+      const valor = garantia.criterioAvaliacao === 'mercado' ? l.valorMercado : l.valorVendaForcada;
+      return !isNaN(valor) && isFinite(valor) && valor > 0;
+    });
+
+    if (lotesValidos.length === 0) {
+      alert('⚠️ Nenhum lote válido encontrado para seleção.');
+      return;
+    }
+
+    // Somar até cobrir o valor necessário
     let soma = 0;
     const idsSelecionados: string[] = [];
     
-    for (const lote of lotesOrdenados) {
+    for (const lote of lotesValidos) {
       const valor = garantia.criterioAvaliacao === 'mercado' ? lote.valorMercado : lote.valorVendaForcada;
       soma += valor;
       idsSelecionados.push(lote.id);
       
-      if (soma >= limiteNecessario) {
+      // Verificar se já cobriu o necessário (com margem de segurança)
+      const limiteComLTV = soma * (garantia.ltvMaximo / 100);
+      if (limiteComLTV >= saldoPico) {
         break;
       }
     }

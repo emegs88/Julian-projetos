@@ -22,8 +22,12 @@ export function InputMoney({ value, onChange, label, error, ...props }: InputMon
     const rawValue = e.target.value;
     const numericValue = parseBRL(rawValue);
     
-    if (!isNaN(numericValue)) {
+    // Validar valor antes de atualizar
+    if (!isNaN(numericValue) && isFinite(numericValue) && numericValue >= 0) {
       onChange(numericValue);
+    } else if (rawValue === '' || rawValue === 'R$') {
+      // Permitir campo vazio temporariamente
+      onChange(0);
     }
   };
 

@@ -6,17 +6,27 @@
  * Formata valor em BRL
  */
 export function formatBRL(value: number): string {
+  // Proteção contra valores inválidos
+  if (value === null || value === undefined || isNaN(value) || !isFinite(value)) {
+    return 'R$ 0,00';
+  }
+  
   return new Intl.NumberFormat('pt-BR', {
     style: 'currency',
     currency: 'BRL',
-  }).format(value);
+  }).format(Math.max(0, value));
 }
 
 /**
  * Formata percentual
  */
 export function formatPercent(value: number, decimals: number = 2): string {
-  return `${value.toFixed(decimals)}%`;
+  // Proteção contra valores inválidos
+  if (value === null || value === undefined || isNaN(value) || !isFinite(value)) {
+    return '0,00%';
+  }
+  
+  return `${Math.max(0, value).toFixed(decimals)}%`;
 }
 
 /**
@@ -33,12 +43,23 @@ export function formatNumber(value: number, decimals: number = 2): string {
  * Converte string BRL para número
  */
 export function parseBRL(value: string): number {
-  return parseFloat(
-    value
-      .replace(/[^\d,.-]/g, '')
-      .replace(/\./g, '')
-      .replace(',', '.')
-  );
+  if (!value || typeof value !== 'string') {
+    return 0;
+  }
+  
+  const cleaned = value
+    .replace(/[^\d,.-]/g, '')
+    .replace(/\./g, '')
+    .replace(',', '.');
+  
+  const parsed = parseFloat(cleaned);
+  
+  // Proteção contra valores inválidos
+  if (isNaN(parsed) || !isFinite(parsed)) {
+    return 0;
+  }
+  
+  return Math.max(0, parsed);
 }
 
 /**

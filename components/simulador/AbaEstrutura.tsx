@@ -35,13 +35,28 @@ export function AbaEstrutura() {
     : estrutura;
 
   const handleCalculate = () => {
-    if (estruturaCalculo.credito <= 0 || estruturaCalculo.prazoTotal <= 0) {
+    // Validações antes de calcular
+    if (!estruturaCalculo || estruturaCalculo.credito <= 0 || estruturaCalculo.prazoTotal <= 0) {
       setCalculos(null);
       return;
     }
+    
+    // Validar valores numéricos
+    if (isNaN(estruturaCalculo.credito) || isNaN(estruturaCalculo.prazoTotal) || 
+        !isFinite(estruturaCalculo.credito) || !isFinite(estruturaCalculo.prazoTotal)) {
+      setCalculos(null);
+      return;
+    }
+    
     try {
       const calculos = calcularTodos(estruturaCalculo, lotes, garantia, veiculos, cotasAutomoveis);
-      setCalculos(calculos);
+      
+      // Validar resultado
+      if (calculos && !isNaN(calculos.valorLiquido) && isFinite(calculos.valorLiquido)) {
+        setCalculos(calculos);
+      } else {
+        setCalculos(null);
+      }
     } catch (error) {
       console.error('Erro ao calcular:', error);
       setCalculos(null);
@@ -49,15 +64,30 @@ export function AbaEstrutura() {
   };
 
   useEffect(() => {
-    if (estruturaCalculo.credito > 0 && estruturaCalculo.prazoTotal > 0) {
-      try {
-        const calculos = calcularTodos(estruturaCalculo, lotes, garantia, veiculos, cotasAutomoveis);
+    // Validações antes de calcular
+    if (!estruturaCalculo || estruturaCalculo.credito <= 0 || estruturaCalculo.prazoTotal <= 0) {
+      setCalculos(null);
+      return;
+    }
+    
+    // Validar valores numéricos
+    if (isNaN(estruturaCalculo.credito) || isNaN(estruturaCalculo.prazoTotal) || 
+        !isFinite(estruturaCalculo.credito) || !isFinite(estruturaCalculo.prazoTotal)) {
+      setCalculos(null);
+      return;
+    }
+    
+    try {
+      const calculos = calcularTodos(estruturaCalculo, lotes, garantia, veiculos, cotasAutomoveis);
+      
+      // Validar resultado
+      if (calculos && !isNaN(calculos.valorLiquido) && isFinite(calculos.valorLiquido)) {
         setCalculos(calculos);
-      } catch (error) {
-        console.error('Erro ao calcular:', error);
+      } else {
         setCalculos(null);
       }
-    } else {
+    } catch (error) {
+      console.error('Erro ao calcular:', error);
       setCalculos(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

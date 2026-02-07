@@ -1,6 +1,5 @@
 import { create } from 'zustand';
 import { Empreendimento, Lote, EstruturaOperacao, Garantia, CalculosResultado, Cenario, Cota, CenarioGarantia, Veiculo, CotaAutomovel } from '@/types';
-import { CotaSelecionada } from '@/types/bidcon';
 import { lotesPromissao, empreendimentoPromissao } from '@/data/promissao-lotes';
 
 interface SimuladorState {
@@ -17,8 +16,6 @@ interface SimuladorState {
   cotas: Cota[];
   usarMultiplasCotas: boolean; // Toggle para usar múltiplas cotas ou estrutura única
   
-  // Cotas do Marketplace BidCon
-  cotasBidCon: CotaSelecionada[];
   
   // Garantias
   garantia: Garantia;
@@ -57,9 +54,6 @@ interface SimuladorState {
   updateCotaAutomovel: (id: string, cota: Partial<CotaAutomovel>) => void;
   removeCotaAutomovel: (id: string) => void;
   toggleCotaAutomovelSelecionado: (cotaId: string) => void;
-  setCotasBidCon: (cotas: CotaSelecionada[]) => void;
-  toggleCotaBidConSelecionada: (cotaId: string) => void;
-  updateCotaBidCon: (id: string, cota: Partial<CotaSelecionada>) => void;
   reset: () => void;
 }
 
@@ -116,7 +110,6 @@ export const useSimuladorStore = create<SimuladorState>((set) => ({
   estrutura: estruturaInicial,
   cotas: [],
   usarMultiplasCotas: false,
-  cotasBidCon: [],
   garantia: garantiaInicial,
   cenariosGarantia: [],
   cenarios: [
@@ -291,19 +284,6 @@ export const useSimuladorStore = create<SimuladorState>((set) => ({
       return { cotasAutomoveis: cotas, garantia };
     }),
   
-  setCotasBidCon: (cotas) => set({ cotasBidCon: cotas }),
-  
-  toggleCotaBidConSelecionada: (cotaId) =>
-    set((state) => ({
-      cotasBidCon: state.cotasBidCon.map((c) =>
-        c.id === cotaId ? { ...c, selecionada: !c.selecionada } : c
-      ),
-    })),
-  
-  updateCotaBidCon: (id, cota) =>
-    set((state) => ({
-      cotasBidCon: state.cotasBidCon.map((c) => (c.id === id ? { ...c, ...cota } : c)),
-    })),
   
   reset: () =>
     set({
@@ -312,7 +292,6 @@ export const useSimuladorStore = create<SimuladorState>((set) => ({
       estrutura: estruturaInicial,
       cotas: [],
       usarMultiplasCotas: false,
-      cotasBidCon: [],
       veiculos: [],
       cotasAutomoveis: [],
       garantia: garantiaInicial,

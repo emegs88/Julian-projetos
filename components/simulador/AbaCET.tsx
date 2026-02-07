@@ -11,15 +11,30 @@ export function AbaCET() {
   const { estrutura, lotes, garantia, veiculos, cotasAutomoveis, calculos, setCalculos } = useSimuladorStore();
 
   useEffect(() => {
-    if (estrutura.credito > 0 && estrutura.prazoTotal > 0) {
-      try {
-        const resultado = calcularTodos(estrutura, lotes, garantia, veiculos, cotasAutomoveis);
+    // Validações antes de calcular
+    if (!estrutura || estrutura.credito <= 0 || estrutura.prazoTotal <= 0) {
+      setCalculos(null);
+      return;
+    }
+    
+    // Validar valores numéricos
+    if (isNaN(estrutura.credito) || isNaN(estrutura.prazoTotal) || 
+        !isFinite(estrutura.credito) || !isFinite(estrutura.prazoTotal)) {
+      setCalculos(null);
+      return;
+    }
+    
+    try {
+      const resultado = calcularTodos(estrutura, lotes, garantia, veiculos, cotasAutomoveis);
+      
+      // Validar resultado
+      if (resultado && !isNaN(resultado.valorLiquido) && isFinite(resultado.valorLiquido)) {
         setCalculos(resultado);
-      } catch (error) {
-        console.error('Erro ao calcular CET:', error);
+      } else {
         setCalculos(null);
       }
-    } else {
+    } catch (error) {
+      console.error('Erro ao calcular CET:', error);
       setCalculos(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -35,8 +50,13 @@ export function AbaCET() {
     );
   }
 
-  const cetMensalPercent = calculos.cetMensal * 100;
-  const cetAnualPercent = calculos.cetAnual * 100;
+  // Proteção contra valores inválidos
+  const cetMensalPercent = (calculos.cetMensal || 0) * 100;
+  const cetAnualPercent = (calculos.cetAnual || 0) * 100;
+  
+  // Validar se os valores são válidos
+  const cetMensalValido = !isNaN(cetMensalPercent) && isFinite(cetMensalPercent);
+  const cetAnualValido = !isNaN(cetAnualPercent) && isFinite(cetAnualPercent);
 
   return (
     <div className="space-y-6">
@@ -46,16 +66,22 @@ export function AbaCET() {
             <div className="bg-primary/10 p-6 rounded-lg">
               <p className="text-sm text-gray-600 mb-2">CET Mensal</p>
               <p className="text-4xl font-bold text-primary">
-                {formatPercent(cetMensalPercent, 4)}
+                {cetMensalValido ? formatPercent(cetMensalPercent, 4) : 'N/A'}
               </p>
               <p className="text-xs text-gray-500 mt-2">ao mês</p>
+              {!cetMensalValido && (
+                <p className="text-xs text-red-600 mt-1">Não foi possível calcular</p>
+              )}
             </div>
             <div className="bg-dark/10 p-6 rounded-lg">
               <p className="text-sm text-gray-600 mb-2">CET Anual</p>
               <p className="text-4xl font-bold text-dark">
-                {formatPercent(cetAnualPercent, 4)}
+                {cetAnualValido ? formatPercent(cetAnualPercent, 4) : 'N/A'}
               </p>
               <p className="text-xs text-gray-500 mt-2">ao ano</p>
+              {!cetAnualValido && (
+                <p className="text-xs text-red-600 mt-1">Não foi possível calcular</p>
+              )}
             </div>
           </div>
 
