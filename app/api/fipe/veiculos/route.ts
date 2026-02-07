@@ -12,7 +12,7 @@ import { clearAllCache } from '@/lib/fipe/cache';
 export async function GET(request: NextRequest) {
   try {
     const forcarAtualizacao = request.nextUrl.searchParams.get('atualizar') === 'true';
-    const buscarCodigos = request.nextUrl.searchParams.get('buscar_codigos') === 'true';
+    const buscarCodigos = request.nextUrl.searchParams.get('buscar_codigos') === 'true' || true; // Sempre buscar se não tiver código
 
     const resultados = await Promise.all(
       veiculosCliente.map(async (veiculo) => {
@@ -21,8 +21,8 @@ export async function GET(request: NextRequest) {
         let fonte: 'brasilapi' | 'cache' | 'manual' = 'manual';
         let codigoFipeAtual = veiculo.codigoFipe;
 
-        // Se não tem código FIPE e buscarCodigos está ativo, tentar buscar automaticamente
-        if ((!codigoFipeAtual || codigoFipeAtual.trim() === '') && buscarCodigos && veiculo.tipo !== 'maquina') {
+        // Se não tem código FIPE, tentar buscar automaticamente (sempre, não só quando buscarCodigos=true)
+        if ((!codigoFipeAtual || codigoFipeAtual.trim() === '') && veiculo.tipo !== 'maquina') {
           try {
             // Extrair marca e modelo do nome
             const partes = veiculo.nome.split(' ');
@@ -32,6 +32,8 @@ export async function GET(request: NextRequest) {
             // Determinar tipo
             const tipo: 'carros' | 'caminhoes' = veiculo.tipo === 'caminhao' ? 'caminhoes' : 'carros';
             
+            console.log(`🔍 Buscando código FIPE para: ${veiculo.nome} (${marca} ${modelo} ${veiculo.ano})`);
+            
             // Buscar código FIPE
             const resultadoBusca = await buscarCodigoFipe(marca, modelo, veiculo.ano, tipo);
             
@@ -39,10 +41,10 @@ export async function GET(request: NextRequest) {
               codigoFipeAtual = resultadoBusca.codigoFipe;
               console.log(`✅ Código FIPE encontrado para ${veiculo.nome}: ${codigoFipeAtual}`);
             } else {
-              console.warn(`⚠️ Código FIPE não encontrado para ${veiculo.nome}: ${resultadoBusca.erro}`);
+              console.warn(`⚠️ Código FIPE não encontrado para ${veiculo.nome}: ${resultadoBusca.erro || 'Erro desconhecido'}`);
             }
           } catch (error: any) {
-            console.error(`Erro ao buscar código FIPE para ${veiculo.nome}:`, error);
+            console.error(`❌ Erro ao buscar código FIPE para ${veiculo.nome}:`, error.message || error);
           }
         }
 

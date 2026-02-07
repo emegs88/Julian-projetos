@@ -3,7 +3,7 @@
  * Usa a BrasilAPI para encontrar o código FIPE
  */
 
-import { listarMarcas, listarTabelasFIPE } from './brasilapi';
+import { listarMarcas, listarTabelasFIPE, type MarcaFipe } from './brasilapi';
 
 const BRASIL_API_BASE = 'https://brasilapi.com.br/api/fipe';
 
@@ -35,6 +35,7 @@ function normalizarMarca(marca: string): string {
     'mb': 'mercedes-benz',
     'mercedes': 'mercedes-benz',
     'mercedes-benz': 'mercedes-benz',
+    'mercedes benz': 'mercedes-benz',
     'jaguar': 'jaguar',
     'porsche': 'porsche',
     'peugeot': 'peugeot',
@@ -43,6 +44,33 @@ function normalizarMarca(marca: string): string {
   
   const marcaLower = marca.toLowerCase().trim();
   return normalizacoes[marcaLower] || marcaLower;
+}
+
+/**
+ * Busca marca na lista usando múltiplas estratégias
+ */
+function encontrarMarca(marcas: MarcaFipe[], marcaBuscada: string): MarcaFipe | null {
+  const marcaNormalizada = normalizarMarca(marcaBuscada);
+  
+  // Estratégia 1: match exato normalizado
+  let encontrada = marcas.find(m => normalizarMarca(m.nome) === marcaNormalizada);
+  if (encontrada) return encontrada;
+  
+  // Estratégia 2: contém
+  encontrada = marcas.find(m => {
+    const nomeNormalizado = normalizarMarca(m.nome);
+    return nomeNormalizado.includes(marcaNormalizada) || marcaNormalizada.includes(nomeNormalizado);
+  });
+  if (encontrada) return encontrada;
+  
+  // Estratégia 3: busca por palavras-chave
+  const palavrasBuscadas = marcaNormalizada.split(/[\s-]+/);
+  encontrada = marcas.find(m => {
+    const nomeNormalizado = normalizarMarca(m.nome);
+    return palavrasBuscadas.some(p => nomeNormalizado.includes(p));
+  });
+  
+  return encontrada || null;
 }
 
 /**
@@ -68,12 +96,14 @@ export async function buscarCodigoFipe(
     const modeloNormalizado = normalizarModelo(modelo);
     
     // 1. Buscar marcas
+    console.log(`🔍 Buscando marca: "${marca}" (normalizada: "${marcaNormalizada}")`);
     const marcas = await listarMarcas(tipo);
-    const marcaEncontrada = marcas.find(
-      (m) => normalizarMarca(m.nome) === marcaNormalizada
-    );
+    console.log(`📋 Total de marcas encontradas: ${marcas.length}`);
+    
+    const marcaEncontrada = encontrarMarca(marcas, marca);
     
     if (!marcaEncontrada) {
+      console.warn(`⚠️ Marca não encontrada: "${marca}". Marcas disponíveis (primeiras 10):`, marcas.slice(0, 10).map(m => m.nome));
       return {
         codigoFipe: null,
         marca,
@@ -82,6 +112,8 @@ export async function buscarCodigoFipe(
         erro: `Marca "${marca}" não encontrada na FIPE para ${tipo}`,
       };
     }
+    
+    console.log(`✅ Marca encontrada: "${marcaEncontrada.nome}" (código: ${marcaEncontrada.codigo})`);
     
     // 2. Buscar modelos da marca
     const responseModelos = await fetch(
@@ -98,14 +130,30 @@ export async function buscarCodigoFipe(
       ? dataModelos 
       : (dataModelos.modelos || []);
     
-    // Buscar modelo (pode ser parcial)
-    const modeloEncontrado = modelos.find((m) => {
+    // Buscar modelo (pode ser parcial) - tentar múltiplas estratégias
+    let modeloEncontrado = modelos.find((m) => {
       const nomeModelo = normalizarModelo(m.nome);
-      return nomeModelo.includes(modeloNormalizado) || 
-             modeloNormalizado.includes(nomeModelo);
+      // Estratégia 1: match exato
+      if (nomeModelo === modeloNormalizado) return true;
+      // Estratégia 2: contém
+      if (nomeModelo.includes(modeloNormalizado) || modeloNormalizado.includes(nomeModelo)) return true;
+      // Estratégia 3: palavras-chave (ex: "Polo" encontra "Polo", "Polo 1.0", etc)
+      const palavrasModelo = modeloNormalizado.split(' ');
+      const palavrasNome = nomeModelo.split(' ');
+      return palavrasModelo.some(p => palavrasNome.some(n => n.includes(p) || p.includes(n)));
     });
     
+    // Se não encontrou, tentar busca mais flexível (remover números, espaços extras)
     if (!modeloEncontrado) {
+      const modeloLimpo = modeloNormalizado.replace(/\d+/g, '').trim();
+      modeloEncontrado = modelos.find((m) => {
+        const nomeModelo = normalizarModelo(m.nome).replace(/\d+/g, '').trim();
+        return nomeModelo.includes(modeloLimpo) || modeloLimpo.includes(nomeModelo);
+      });
+    }
+    
+    if (!modeloEncontrado) {
+      console.warn(`Modelo não encontrado: "${modelo}" para marca "${marca}". Modelos disponíveis:`, modelos.slice(0, 5).map(m => m.nome));
       return {
         codigoFipe: null,
         marca,

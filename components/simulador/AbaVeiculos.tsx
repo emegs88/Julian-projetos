@@ -38,23 +38,53 @@ export function AbaVeiculos() {
   const [loadingFIPE, setLoadingFIPE] = useState(false);
   const [loadingVeiculosCliente, setLoadingVeiculosCliente] = useState(false);
   const [veiculosCliente, setVeiculosCliente] = useState<any[]>([]);
+  const [progressFIPE, setProgressFIPE] = useState<{ atual: number; total: number } | null>(null);
+  const [showModalResolver, setShowModalResolver] = useState(false);
+  const [erroResolver, setErroResolver] = useState<{ veiculoId: string; erro: string; sugestoes?: any[] } | null>(null);
 
   // Carregar veículos do cliente ao abrir a aba
   useEffect(() => {
-    carregarVeiculosCliente();
+    // Primeiro tentar carregar do cache
+    if (typeof window !== 'undefined') {
+      import('@/lib/fipe/localStorageCache').then(({ getFipeCache }) => {
+        const cache = getFipeCache();
+        if (Object.keys(cache).length > 0) {
+          // Atualizar veículos com valores do cache
+          Object.entries(cache).forEach(([veiculoId, entry]) => {
+            const veiculo = veiculos.find(v => v.id === veiculoId);
+            if (veiculo) {
+              updateVeiculo(veiculoId, {
+                fipe: entry.fipe,
+                valorGarantia: entry.garantia,
+                observacoes: `${veiculo.observacoes?.split(' - ')[0] || veiculo.modelo} - Cache ${entry.mesReferencia}`,
+              });
+            }
+          });
+        }
+      });
+    }
+    
+    // Depois carregar da API
+    carregarVeiculosCliente(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Carregar veículos do cliente da API
-  const carregarVeiculosCliente = async (buscarCodigos: boolean = false) => {
+  const carregarVeiculosCliente = async (buscarCodigos: boolean = true) => {
     setLoadingVeiculosCliente(true);
     try {
+      // Sempre buscar códigos FIPE se não tiverem
       const url = buscarCodigos 
         ? '/api/fipe/veiculos?buscar_codigos=true'
         : '/api/fipe/veiculos';
+      console.log('🔄 Carregando veículos da API:', url);
       const response = await fetch(url);
-      if (!response.ok) throw new Error('Erro ao carregar veículos');
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Erro ao carregar veículos: ${response.status} - ${errorText}`);
+      }
       const data = await response.json();
+      console.log('✅ Veículos carregados:', data.length, 'itens');
       setVeiculosCliente(data);
       
       // Converter para formato Veiculo e adicionar ao store se não existirem
@@ -94,49 +124,138 @@ export function AbaVeiculos() {
     }
   };
 
-  // Atualizar FIPE (forçar atualização e buscar códigos automaticamente)
-  const handleAtualizarFIPE = async () => {
-    setLoadingVeiculosCliente(true);
+  // Atualizar FIPE PRO (automático)
+  const handleAtualizarFIPEPRO = async () => {
+    setLoadingFIPE(true);
+    setProgressFIPE({ atual: 0, total: veiculosCliente.length || veiculos.length });
+    
     try {
-      // Buscar códigos FIPE automaticamente e atualizar valores
-      const response = await fetch('/api/fipe/veiculos?atualizar=true&buscar_codigos=true');
-      if (!response.ok) throw new Error('Erro ao atualizar FIPE');
+      // Preparar lista de veículos para a API
+      const vehiclesList = veiculosCliente.length > 0 
+        ? veiculosCliente.map((v: any) => {
+            const partes = v.nome.split(' ');
+            return {
+              id: v.id,
+              tipo: v.tipo === 'maquina' ? 'maquinas' : (v.tipo === 'caminhao' ? 'caminhoes' : 'carros'),
+              marcaTexto: partes[0] || '',
+              modeloTexto: partes.slice(1).join(' ') || v.nome,
+              ano: v.ano,
+              fipeAtual: v.fipe || v.fipeManual,
+              codigoFipe: v.codigoFipe,
+              fonte: v.fipeManual ? 'manual' : 'api',
+              multiplicador: v.multiplicador || 1.3,
+              incluir: garantia.veiculosSelecionados.includes(v.id),
+            };
+          })
+        : veiculos.map((v) => {
+            return {
+              id: v.id,
+              tipo: 'carros', // Default, pode melhorar depois
+              marcaTexto: v.marca,
+              modeloTexto: v.modelo,
+              ano: v.ano,
+              fipeAtual: v.fipe,
+              codigoFipe: undefined,
+              fonte: 'api',
+              multiplicador: multiplicadorFIPE,
+              incluir: garantia.veiculosSelecionados.includes(v.id),
+            };
+          });
+
+      // Chamar API PRO
+      const response = await fetch('/api/fipe/update-pro', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ vehicles: vehiclesList }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Erro ao atualizar FIPE');
+      }
+
       const data = await response.json();
-      setVeiculosCliente(data);
-      
-      // Atualizar veículos no store
-      data.forEach((v: any) => {
-        const veiculoExistente = veiculos.find((veic) => veic.id === v.id);
+
+      if (!data.success || !data.resultados) {
+        throw new Error('Resposta inválida da API');
+      }
+
+      // Processar resultados
+      let atualizados = 0;
+      let erros = 0;
+      const errosComSugestoes: Array<{ veiculoId: string; erro: string; sugestoes?: any[] }> = [];
+
+      for (let i = 0; i < data.resultados.length; i++) {
+        const resultado = data.resultados[i];
+        setProgressFIPE({ atual: i + 1, total: data.resultados.length });
+
+        if (!resultado.ok) {
+          erros++;
+          if (resultado.sugestoes && resultado.sugestoes.length > 0) {
+            errosComSugestoes.push({
+              veiculoId: resultado.id,
+              erro: resultado.erro || 'Erro desconhecido',
+              sugestoes: resultado.sugestoes,
+            });
+          }
+          continue;
+        }
+
+        // Atualizar veículo no store
+        const veiculoExistente = veiculos.find((veic) => veic.id === resultado.id);
+        
         if (veiculoExistente) {
-          updateVeiculo(v.id, {
-            fipe: v.fipe,
-            valorGarantia: v.garantia,
-            observacoes: `${v.tipo} - ${v.fonte === 'brasilapi' ? `FIPE ${v.mesReferencia}` : v.fonte === 'cache' ? `Cache ${v.mesReferencia}` : 'Manual'}`,
+          updateVeiculo(resultado.id, {
+            fipe: resultado.fipeAtual || 0,
+            valorGarantia: resultado.garantia || 0,
+            observacoes: `API ${resultado.mesReferencia || ''}`.trim(),
           });
         } else {
-          addVeiculo({
-            id: v.id,
-            marca: v.nome.split(' ')[0] || '',
-            modelo: v.nome.split(' ').slice(1).join(' ') || v.nome,
-            ano: v.ano,
-            placa: '',
-            chassi: '',
-            fipe: v.fipe,
-            valorGarantia: v.garantia,
-            observacoes: `${v.tipo} - ${v.fonte === 'brasilapi' ? `FIPE ${v.mesReferencia}` : v.fonte === 'cache' ? `Cache ${v.mesReferencia}` : 'Manual'}`,
-            selecionado: false,
-          });
+          // Adicionar novo veículo
+          const veiculoCliente = veiculosCliente.find((v: any) => v.id === resultado.id);
+          if (veiculoCliente) {
+            const partes = veiculoCliente.nome.split(' ');
+            addVeiculo({
+              id: resultado.id,
+              marca: partes[0] || '',
+              modelo: partes.slice(1).join(' ') || veiculoCliente.nome,
+              ano: veiculoCliente.ano,
+              placa: '',
+              chassi: '',
+              fipe: resultado.fipeAtual || 0,
+              valorGarantia: resultado.garantia || 0,
+              observacoes: `API ${resultado.mesReferencia || ''}`.trim(),
+              selecionado: false,
+            });
+          }
         }
-      });
-      
-      alert('✅ FIPE atualizada com sucesso!');
+        
+        atualizados++;
+      }
+
+      // Se houver erros com sugestões, mostrar modal
+      if (errosComSugestoes.length > 0) {
+        setErroResolver(errosComSugestoes[0]);
+        setShowModalResolver(true);
+      }
+
+      // Mensagem de resultado
+      if (erros > 0) {
+        alert(`⚠️ FIPE atualizada: ${atualizados} sucesso(s) e ${erros} erro(s).`);
+      } else {
+        alert(`✅ FIPE atualizada com sucesso! ${atualizados} veículo(s) atualizado(s).`);
+      }
     } catch (error: any) {
-      console.error('Erro ao atualizar FIPE:', error);
-      alert(`Erro ao atualizar FIPE: ${error.message}`);
+      console.error('Erro ao atualizar FIPE PRO:', error);
+      alert(`❌ Erro ao atualizar FIPE: ${error.message || 'Erro desconhecido'}`);
     } finally {
-      setLoadingVeiculosCliente(false);
+      setLoadingFIPE(false);
+      setProgressFIPE(null);
     }
   };
+
+  // Manter função antiga para compatibilidade
+  const handleAtualizarFIPE = handleAtualizarFIPEPRO;
 
   // Buscar veículos na API FIPE
   const handleBuscarVeiculos = async () => {
@@ -336,16 +455,26 @@ export function AbaVeiculos() {
               </p>
             </div>
             <div className="flex gap-2">
-              <Button 
-                onClick={handleAtualizarFIPE} 
+              <Button
+                onClick={handleAtualizarFIPEPRO}
                 size="sm" 
                 variant="primary"
-                disabled={loadingVeiculosCliente}
+                disabled={loadingFIPE}
                 className="font-medium"
               >
-                <RefreshCw className={`w-4 h-4 mr-2 ${loadingVeiculosCliente ? 'animate-spin' : ''}`} />
-                {loadingVeiculosCliente ? 'Atualizando...' : 'Atualizar FIPE'}
+                <RefreshCw className={`w-4 h-4 mr-2 ${loadingFIPE ? 'animate-spin' : ''}`} />
+                {loadingFIPE 
+                  ? (progressFIPE ? `Atualizando ${progressFIPE.atual}/${progressFIPE.total}...` : 'Atualizando...')
+                  : 'Atualizar FIPE (PRO)'}
               </Button>
+              {progressFIPE && (
+                <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
+                  <div
+                    className="bg-red-600 h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${(progressFIPE.atual / progressFIPE.total) * 100}%` }}
+                  ></div>
+                </div>
+              )}
               <Button onClick={handleAddVeiculo} size="sm" className="font-medium">
                 <Plus className="w-4 h-4 mr-2" />
                 Adicionar Veículo
@@ -488,6 +617,82 @@ export function AbaVeiculos() {
           )}
         </div>
       </Card>
+
+      {/* Modal de Resolução de FIPE */}
+      <Modal
+        isOpen={showModalResolver}
+        onClose={() => {
+          setShowModalResolver(false);
+          setErroResolver(null);
+        }}
+        title="Resolver FIPE - Sugestões"
+        size="lg"
+      >
+        {erroResolver && (
+          <div className="space-y-4">
+            <Alert variant="warning">
+              <p className="font-semibold">Erro ao resolver código FIPE automaticamente:</p>
+              <p className="text-sm">{erroResolver.erro}</p>
+            </Alert>
+            
+            {erroResolver.sugestoes && erroResolver.sugestoes.length > 0 && (
+              <div>
+                <p className="font-semibold mb-3">Sugestões encontradas:</p>
+                <div className="space-y-2">
+                  {erroResolver.sugestoes.map((sugestao, index) => (
+                    <div
+                      key={index}
+                      className="border border-gray-300 rounded-lg p-4 hover:bg-gray-50 cursor-pointer"
+                      onClick={async () => {
+                        // Salvar código FIPE escolhido
+                        try {
+                          const response = await fetch('/api/fipe/update-pro', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              vehicles: [{
+                                id: erroResolver.veiculoId,
+                                codigoFipe: sugestao.codigoFipe,
+                                // Outros campos necessários
+                              }],
+                            }),
+                          });
+                          
+                          if (response.ok) {
+                            alert('✅ Código FIPE salvo com sucesso!');
+                            setShowModalResolver(false);
+                            setErroResolver(null);
+                            // Recarregar veículos
+                            handleAtualizarFIPEPRO();
+                          }
+                        } catch (error: any) {
+                          alert(`Erro ao salvar código FIPE: ${error.message}`);
+                        }
+                      }}
+                    >
+                      <div className="flex justify-between items-center">
+                        <div>
+                          <p className="font-semibold">{sugestao.marca} {sugestao.modelo}</p>
+                          <p className="text-sm text-gray-600">Ano: {sugestao.ano}</p>
+                          <p className="text-xs text-gray-500">Código FIPE: {sugestao.codigoFipe}</p>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-sm font-medium text-blue-600">
+                            Score: {(sugestao.score * 100).toFixed(0)}%
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-xs text-gray-500 mt-3">
+                  Clique em uma sugestão para salvar o código FIPE e atualizar o veículo.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
 
       {/* Modal de Busca de Veículos FIPE */}
       <Modal
