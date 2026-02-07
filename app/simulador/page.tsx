@@ -82,46 +82,14 @@ export default function SimuladorPage() {
 
           {/* Tab Content */}
           <div className="min-h-[400px]">
-            {activeTab === 'empreendimento' && (
-              <div key="empreendimento">
-                <AbaEmpreendimento />
-              </div>
-            )}
-            {activeTab === 'cotas' && (
-              <div key="cotas">
-                <AbaCotas />
-              </div>
-            )}
-            {activeTab === 'veiculos' && (
-              <div key="veiculos">
-                <AbaVeiculos />
-              </div>
-            )}
-            {activeTab === 'cotas-automoveis' && (
-              <div key="cotas-automoveis">
-                <AbaCotasAutomoveis />
-              </div>
-            )}
-            {activeTab === 'estrutura' && (
-              <div key="estrutura">
-                <AbaEstrutura />
-              </div>
-            )}
-            {activeTab === 'garantias' && (
-              <div key="garantias">
-                <AbaGarantias />
-              </div>
-            )}
-            {activeTab === 'cet' && (
-              <div key="cet">
-                <AbaCET />
-              </div>
-            )}
-            {activeTab === 'graficos' && (
-              <div key="graficos">
-                <AbaGraficos />
-              </div>
-            )}
+            {activeTab === 'empreendimento' && <AbaEmpreendimento />}
+            {activeTab === 'cotas' && <AbaCotas />}
+            {activeTab === 'veiculos' && <AbaVeiculos />}
+            {activeTab === 'cotas-automoveis' && <AbaCotasAutomoveis />}
+            {activeTab === 'estrutura' && <AbaEstrutura />}
+            {activeTab === 'garantias' && <AbaGarantias />}
+            {activeTab === 'cet' && <AbaCET />}
+            {activeTab === 'graficos' && <AbaGraficos />}
           </div>
         </div>
       </div>
