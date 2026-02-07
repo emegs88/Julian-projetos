@@ -154,7 +154,7 @@ export function AbaEstrutura() {
             label="Crédito da Cota Contemplada"
             value={estruturaCalculo.credito}
             onChange={(value) => setEstrutura({ credito: value })}
-            disabled={usarMultiplasCotas && totaisCotas && totaisCotas.credito > 0}
+            disabled={!!(usarMultiplasCotas && totaisCotas && totaisCotas.credito > 0)}
           />
           <InputMoney
             label="Entrada Negociada (descontada do crédito)"
@@ -212,7 +212,7 @@ export function AbaEstrutura() {
             label="Parcela Mensal (PMT)"
             value={estruturaCalculo.parcelaMensal}
             onChange={(value) => setEstrutura({ parcelaMensal: value })}
-            disabled={usarMultiplasCotas && totaisCotas && totaisCotas.parcelaMensal > 0}
+            disabled={!!(usarMultiplasCotas && totaisCotas && totaisCotas.parcelaMensal > 0)}
           />
           <div>
             <label className="flex items-center gap-2 mb-2">
