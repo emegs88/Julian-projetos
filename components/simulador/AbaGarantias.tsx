@@ -71,8 +71,8 @@ export function AbaGarantias() {
         valorTotal: 0,
         areaTotal: 0,
         valorMedio: 0,
-        maiorLote: null as any,
-        menorLote: null as any,
+        maiorLote: null,
+        menorLote: null,
         numeroMatriculas: 0,
       };
     }
