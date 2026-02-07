@@ -149,23 +149,23 @@ export const useSimuladorStore = create<SimuladorState>((set) => ({
       empreendimento: { ...state.empreendimento, ...empreendimento },
     })),
   
-  setLotes: (lotes) => set({ lotes }),
+  setLotes: (lotes) => set({ lotes: Array.isArray(lotes) ? lotes : [] }),
   
-  setVeiculos: (veiculos) => set({ veiculos }),
+  setVeiculos: (veiculos) => set({ veiculos: Array.isArray(veiculos) ? veiculos : [] }),
   
   addVeiculo: (veiculo) =>
     set((state) => ({
-      veiculos: [...state.veiculos, veiculo],
+      veiculos: [...(Array.isArray(state.veiculos) ? state.veiculos : []), veiculo],
     })),
   
   updateVeiculo: (id, veiculo) =>
     set((state) => ({
-      veiculos: state.veiculos.map((v) => (v.id === id ? { ...v, ...veiculo } : v)),
+      veiculos: (Array.isArray(state.veiculos) ? state.veiculos : []).map((v) => (v.id === id ? { ...v, ...veiculo } : v)),
     })),
   
   removeVeiculo: (id) =>
     set((state) => ({
-      veiculos: state.veiculos.filter((v) => v.id !== id),
+      veiculos: (Array.isArray(state.veiculos) ? state.veiculos : []).filter((v) => v.id !== id),
     })),
   
   toggleVeiculoSelecionado: (veiculoId) =>
@@ -232,11 +232,11 @@ export const useSimuladorStore = create<SimuladorState>((set) => ({
   
   setCenarioAtivo: (cenario) => set({ cenarioAtivo: cenario }),
   
-  setCotas: (cotas) => set({ cotas }),
+  setCotas: (cotas) => set({ cotas: Array.isArray(cotas) ? cotas : [] }),
   
   addCota: (cota) =>
     set((state) => ({
-      cotas: [...state.cotas, cota],
+      cotas: [...(Array.isArray(state.cotas) ? state.cotas : []), cota],
     })),
   
   updateCota: (id, cota) =>
@@ -251,11 +251,11 @@ export const useSimuladorStore = create<SimuladorState>((set) => ({
   
   setUsarMultiplasCotas: (usar) => set({ usarMultiplasCotas: usar }),
   
-  setCotasAutomoveis: (cotas) => set({ cotasAutomoveis: cotas }),
+  setCotasAutomoveis: (cotas) => set({ cotasAutomoveis: Array.isArray(cotas) ? cotas : [] }),
   
   addCotaAutomovel: (cota) =>
     set((state) => ({
-      cotasAutomoveis: [...state.cotasAutomoveis, cota],
+      cotasAutomoveis: [...(Array.isArray(state.cotasAutomoveis) ? state.cotasAutomoveis : []), cota],
     })),
   
   updateCotaAutomovel: (id, cota) =>

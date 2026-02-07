@@ -16,12 +16,26 @@ import { CustosDetalhados } from './CustosDetalhados';
 export function AbaEstrutura() {
   const { estrutura, lotes, garantia, veiculos, cotasAutomoveis, cotas, usarMultiplasCotas, setEstrutura, setCalculos } = useSimuladorStore();
   
+  // SANITIZAR: Garantir que arrays nunca sejam undefined
+  const lotesSanitizados = Array.isArray(lotes) ? lotes : [];
+  const veiculosSanitizados = Array.isArray(veiculos) ? veiculos : [];
+  const cotasAutomoveisSanitizados = Array.isArray(cotasAutomoveis) ? cotasAutomoveis : [];
+  const cotasSanitizadas = Array.isArray(cotas) ? cotas : [];
+  const garantiaSanitizada = garantia || {
+    ltvMaximo: 70,
+    criterioAvaliacao: 'mercado' as const,
+    lotesSelecionados: [],
+    modoJuncao: 'consolidado' as const,
+    veiculosSelecionados: [],
+    usarVeiculos: false,
+  };
+  
   // Calcular totais das cotas se estiver usando múltiplas cotas
-  const totaisCotas = usarMultiplasCotas
+  const totaisCotas = usarMultiplasCotas && cotasSanitizadas.length > 0
     ? {
-        credito: cotas.reduce((sum, c) => sum + c.credito, 0),
-        parcelaMensal: cotas.reduce((sum, c) => sum + c.parcelaMensal, 0),
-        saldoDevedor: cotas.reduce((sum, c) => sum + c.saldoDevedor, 0),
+        credito: cotasSanitizadas.reduce((sum, c) => sum + (c?.credito || 0), 0),
+        parcelaMensal: cotasSanitizadas.reduce((sum, c) => sum + (c?.parcelaMensal || 0), 0),
+        saldoDevedor: cotasSanitizadas.reduce((sum, c) => sum + (c?.saldoDevedor || 0), 0),
       }
     : null;
 
@@ -49,7 +63,7 @@ export function AbaEstrutura() {
     }
     
     try {
-      const calculos = calcularTodos(estruturaCalculo, lotes, garantia, veiculos, cotasAutomoveis);
+      const calculos = calcularTodos(estruturaCalculo, lotesSanitizados, garantiaSanitizada, veiculosSanitizados, cotasAutomoveisSanitizados);
       
       // Validar resultado
       if (calculos && !isNaN(calculos.valorLiquido) && isFinite(calculos.valorLiquido)) {
@@ -78,7 +92,7 @@ export function AbaEstrutura() {
     }
     
     try {
-      const calculos = calcularTodos(estruturaCalculo, lotes, garantia, veiculos, cotasAutomoveis);
+      const calculos = calcularTodos(estruturaCalculo, lotesSanitizados, garantiaSanitizada, veiculosSanitizados, cotasAutomoveisSanitizados);
       
       // Validar resultado
       if (calculos && !isNaN(calculos.valorLiquido) && isFinite(calculos.valorLiquido)) {
@@ -91,7 +105,7 @@ export function AbaEstrutura() {
       setCalculos(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [estrutura, lotes, garantia, veiculos, cotasAutomoveis, cotas, usarMultiplasCotas, totaisCotas]);
+  }, [estrutura, lotesSanitizados, garantiaSanitizada, veiculosSanitizados, cotasAutomoveisSanitizados, cotasSanitizadas, usarMultiplasCotas, totaisCotas]);
 
   // Aplicar valores de referência de Promissão se estrutura estiver vazia
   const aplicarValoresReferencia = () => {
@@ -116,7 +130,7 @@ export function AbaEstrutura() {
         </Alert>
       )}
 
-      {usarMultiplasCotas && totaisCotas && cotas.length > 0 && (
+      {usarMultiplasCotas && totaisCotas && cotasSanitizadas.length > 0 && (
         <Card title="Resumo das Cotas Agrupadas">
           <Alert variant="info" className="mb-4">
             Você está usando múltiplas cotas. Os valores abaixo são calculados automaticamente a partir das cotas cadastradas.
@@ -125,7 +139,7 @@ export function AbaEstrutura() {
             <div className="bg-gray-50 p-4 rounded-lg">
               <p className="text-sm text-gray-600">Crédito Total</p>
               <p className="text-2xl font-bold text-primary">{formatBRL(totaisCotas.credito)}</p>
-              <p className="text-xs text-gray-500 mt-1">{cotas.length} cota(s)</p>
+              <p className="text-xs text-gray-500 mt-1">{cotasSanitizadas.length} cota(s)</p>
             </div>
             <div className="bg-gray-50 p-4 rounded-lg">
               <p className="text-sm text-gray-600">Parcela Mensal Total</p>

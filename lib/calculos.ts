@@ -228,13 +228,26 @@ export function calcularFluxoCaixa(
  * Calcula o valor da garantia baseado nos lotes selecionados
  */
 export function calcularValorGarantia(
-  lotes: Lote[],
-  garantia: Garantia,
-  veiculos?: Veiculo[],
-  cotasAutomoveis?: CotaAutomovel[]
+  lotes: Lote[] | null | undefined,
+  garantia: Garantia | null | undefined,
+  veiculos?: Veiculo[] | null | undefined,
+  cotasAutomoveis?: CotaAutomovel[] | null | undefined
 ): number {
+  // SANITIZAR: Garantir que arrays nunca sejam undefined/null
+  const lotesSanitizados = Array.isArray(lotes) ? lotes : [];
+  const veiculosSanitizados = Array.isArray(veiculos) ? veiculos : [];
+  const cotasAutomoveisSanitizados = Array.isArray(cotasAutomoveis) ? cotasAutomoveis : [];
+  const garantiaSanitizada = garantia || {
+    ltvMaximo: 70,
+    criterioAvaliacao: 'mercado' as const,
+    lotesSelecionados: [],
+    modoJuncao: 'consolidado' as const,
+    veiculosSelecionados: [],
+    usarVeiculos: false,
+  };
+  
   // Validar entradas
-  if (!lotes || !garantia) {
+  if (!lotesSanitizados.length && !garantiaSanitizada) {
     return 0;
   }
 
@@ -243,39 +256,39 @@ export function calcularValorGarantia(
   let valorCotasAutomoveis = 0;
 
   // Calcular garantia de lotes
-  if (garantia.lotesSelecionados.length > 0) {
-    const lotesSelecionados = lotes.filter((lote) =>
-      garantia.lotesSelecionados.includes(lote.id)
+  if (garantiaSanitizada.lotesSelecionados.length > 0) {
+    const lotesSelecionados = lotesSanitizados.filter((lote) =>
+      garantiaSanitizada.lotesSelecionados.includes(lote.id)
     );
     
     valorLotes = lotesSelecionados.reduce((total, lote) => {
       const valor =
-        garantia.criterioAvaliacao === 'mercado'
-          ? lote.valorMercado
-          : lote.valorVendaForcada;
+        garantiaSanitizada.criterioAvaliacao === 'mercado'
+          ? (lote.valorMercado || 0)
+          : (lote.valorVendaForcada || 0);
       return total + valor;
     }, 0);
   }
 
   // Calcular garantia de veículos (130% FIPE)
-  if (garantia.usarVeiculos && veiculos && garantia.veiculosSelecionados.length > 0) {
-    const veiculosSelecionados = veiculos.filter((veiculo) =>
-      garantia.veiculosSelecionados.includes(veiculo.id)
+  if (garantiaSanitizada.usarVeiculos && veiculosSanitizados.length > 0 && garantiaSanitizada.veiculosSelecionados.length > 0) {
+    const veiculosSelecionados = veiculosSanitizados.filter((veiculo) =>
+      garantiaSanitizada.veiculosSelecionados.includes(veiculo.id)
     );
     
     valorVeiculos = veiculosSelecionados.reduce((total, veiculo) => {
-      return total + veiculo.valorGarantia; // Já está calculado como 130% da FIPE
+      return total + (veiculo.valorGarantia || 0); // Já está calculado como 130% da FIPE
     }, 0);
   }
 
   // Calcular garantia de cotas de automóveis (130% FIPE)
-  if (garantia.usarVeiculos && cotasAutomoveis && garantia.veiculosSelecionados.length > 0) {
-    const cotasSelecionadas = cotasAutomoveis.filter((cota) =>
-      garantia.veiculosSelecionados.includes(cota.id)
+  if (garantiaSanitizada.usarVeiculos && cotasAutomoveisSanitizados.length > 0 && garantiaSanitizada.veiculosSelecionados.length > 0) {
+    const cotasSelecionadas = cotasAutomoveisSanitizados.filter((cota) =>
+      garantiaSanitizada.veiculosSelecionados.includes(cota.id)
     );
     
     valorCotasAutomoveis = cotasSelecionadas.reduce((total, cota) => {
-      return total + cota.valorGarantia; // Já está calculado como 130% da FIPE
+      return total + (cota.valorGarantia || 0); // Já está calculado como 130% da FIPE
     }, 0);
   }
 
@@ -387,17 +400,30 @@ export function calcularMinimoMatriculas(
  */
 export function calcularTodos(
   estrutura: EstruturaOperacao,
-  lotes: Lote[],
-  garantia: Garantia,
-  veiculos?: Veiculo[],
-  cotasAutomoveis?: CotaAutomovel[]
+  lotes: Lote[] | null | undefined,
+  garantia: Garantia | null | undefined,
+  veiculos?: Veiculo[] | null | undefined,
+  cotasAutomoveis?: CotaAutomovel[] | null | undefined
 ): CalculosResultado {
+  // SANITIZAR: Garantir que arrays nunca sejam undefined/null
+  const lotesSanitizados = Array.isArray(lotes) ? lotes : [];
+  const veiculosSanitizados = Array.isArray(veiculos) ? veiculos : [];
+  const cotasAutomoveisSanitizados = Array.isArray(cotasAutomoveis) ? cotasAutomoveis : [];
+  const garantiaSanitizada = garantia || {
+    ltvMaximo: 70,
+    criterioAvaliacao: 'mercado' as const,
+    lotesSelecionados: [],
+    modoJuncao: 'consolidado' as const,
+    veiculosSelecionados: [],
+    usarVeiculos: false,
+  };
+  
   const valorLiquido = calcularValorLiquido(estrutura);
   const cronograma = calcularCronograma(estrutura);
   const fluxoCaixa = calcularFluxoCaixa(estrutura, cronograma);
   const { saldoPico, mesSaldoPico } = encontrarSaldoPico(cronograma);
-  const valorGarantia = calcularValorGarantia(lotes, garantia, veiculos, cotasAutomoveis);
-  const limiteSaldo = calcularLimiteSaldo(valorGarantia, garantia.ltvMaximo);
+  const valorGarantia = calcularValorGarantia(lotesSanitizados, garantiaSanitizada, veiculosSanitizados, cotasAutomoveisSanitizados);
+  const limiteSaldo = calcularLimiteSaldo(valorGarantia, garantiaSanitizada.ltvMaximo);
   
   // Calcular CET (IRR)
   const cashFlows = fluxoCaixa.map((fc) => fc.entrada + fc.saida);
@@ -408,8 +434,8 @@ export function calcularTodos(
   
   // Calcular quantidade mínima de matrículas
   const quantidadeMinimaMatriculas = calcularMinimoMatriculas(
-    lotes,
-    garantia,
+    lotesSanitizados,
+    garantiaSanitizada,
     saldoPico
   );
   
