@@ -21,7 +21,7 @@ import {
 import { formatBRL } from '@/lib/utils';
 
 export function AbaGraficos() {
-  const { calculos, estrutura, cotasBidCon } = useSimuladorStore();
+  const { calculos, estrutura } = useSimuladorStore();
 
   if (!calculos) {
     return (
@@ -233,36 +233,6 @@ export function AbaGraficos() {
                 <p><strong>Status:</strong> {calculos.dentroLimiteLTV ? 'SEGURO' : 'INSUFICIENTE'}</p>
               </div>
             </div>
-            
-            {/* Cotas BidCon Selecionadas */}
-            {cotasBidCon.filter((c) => c.selecionada).length > 0 && (
-              <div className="border-b pb-4">
-                <h2 className="text-xl font-bold mb-2">Cotas Selecionadas (BidCon)</h2>
-                <div className="space-y-2 text-sm">
-                  {cotasBidCon
-                    .filter((c) => c.selecionada)
-                    .map((cota) => (
-                      <div key={cota.id} className="grid grid-cols-5 gap-2 border-b pb-2">
-                        <p><strong>Grupo/Cota:</strong> {cota.grupo}/{cota.cota}</p>
-                        <p><strong>Crédito:</strong> {formatBRL(cota.credito)}</p>
-                        <p><strong>Líquido a Pagar:</strong> {formatBRL(cota.valorLiquidoAPagar)}</p>
-                        <p><strong>Parcela:</strong> {formatBRL(cota.parcela)}</p>
-                        <p><strong>Prazo:</strong> {cota.prazoMeses} meses</p>
-                        <p className="col-span-2"><strong>Administradora:</strong> {cota.administradora}</p>
-                        <p className="col-span-3"><strong>Status:</strong> {cota.status}</p>
-                      </div>
-                    ))}
-                  <div className="mt-4 pt-2 border-t">
-                    <div className="grid grid-cols-4 gap-4 font-semibold">
-                      <p>Total Crédito: {formatBRL(cotasBidCon.filter((c) => c.selecionada).reduce((sum, c) => sum + c.credito, 0))}</p>
-                      <p>Total Líquido: {formatBRL(cotasBidCon.filter((c) => c.selecionada).reduce((sum, c) => sum + c.valorLiquidoAPagar, 0))}</p>
-                      <p>Total Parcelas: {formatBRL(cotasBidCon.filter((c) => c.selecionada).reduce((sum, c) => sum + c.parcela, 0))}</p>
-                      <p>Qtd Cotas: {cotasBidCon.filter((c) => c.selecionada).length}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
             
             {/* Garantias Selecionadas */}
             <div className="border-b pb-4">

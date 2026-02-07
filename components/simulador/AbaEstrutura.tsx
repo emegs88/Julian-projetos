@@ -14,7 +14,7 @@ import { estruturaPromissaoReferencia } from '@/data/promissao-estrutura';
 import { CustosDetalhados } from './CustosDetalhados';
 
 export function AbaEstrutura() {
-  const { estrutura, lotes, garantia, veiculos, cotasAutomoveis, cotas, cotasBidCon, usarMultiplasCotas, setEstrutura, setCalculos } = useSimuladorStore();
+  const { estrutura, lotes, garantia, veiculos, cotasAutomoveis, cotas, usarMultiplasCotas, setEstrutura, setCalculos } = useSimuladorStore();
   
   // Calcular totais das cotas se estiver usando múltiplas cotas
   const totaisCotas = usarMultiplasCotas
@@ -25,29 +25,22 @@ export function AbaEstrutura() {
       }
     : null;
 
-  // Calcular totais das cotas BidCon selecionadas
-  const totaisBidCon = cotasBidCon
-    .filter((c) => c.selecionada)
-    .reduce(
-      (acc, c) => ({
-        credito: acc.credito + c.credito,
-        parcela: acc.parcela + c.parcela,
-        liquido: acc.liquido + c.valorLiquidoAPagar,
-      }),
-      { credito: 0, parcela: 0, liquido: 0 }
-    );
-
-  // Se houver cotas BidCon selecionadas, somar ao crédito e parcela
-  const creditoTotal = estrutura.credito + (totaisBidCon.credito > 0 ? totaisBidCon.credito : 0);
-  const parcelaTotal = estrutura.parcelaMensal + (totaisBidCon.parcela > 0 ? totaisBidCon.parcela : 0);
+  // Estrutura de cálculo: se usar múltiplas cotas, usar os totais das cotas
+  const estruturaCalculo = usarMultiplasCotas && totaisCotas && totaisCotas.credito > 0
+    ? {
+        ...estrutura,
+        credito: totaisCotas.credito,
+        parcelaMensal: totaisCotas.parcelaMensal,
+      }
+    : estrutura;
 
   const handleCalculate = () => {
-    if (estrutura.credito <= 0 || estrutura.prazoTotal <= 0) {
+    if (estruturaCalculo.credito <= 0 || estruturaCalculo.prazoTotal <= 0) {
       setCalculos(null);
       return;
     }
     try {
-      const calculos = calcularTodos(estrutura, lotes, garantia, veiculos, cotasAutomoveis);
+      const calculos = calcularTodos(estruturaCalculo, lotes, garantia, veiculos, cotasAutomoveis);
       setCalculos(calculos);
     } catch (error) {
       console.error('Erro ao calcular:', error);
@@ -56,15 +49,6 @@ export function AbaEstrutura() {
   };
 
   useEffect(() => {
-    // Se houver cotas BidCon selecionadas, atualizar estrutura temporariamente para cálculos
-    const estruturaCalculo = totaisBidCon.credito > 0
-      ? {
-          ...estrutura,
-          credito: creditoTotal,
-          parcelaMensal: parcelaTotal,
-        }
-      : estrutura;
-
     if (estruturaCalculo.credito > 0 && estruturaCalculo.prazoTotal > 0) {
       try {
         const calculos = calcularTodos(estruturaCalculo, lotes, garantia, veiculos, cotasAutomoveis);
@@ -77,7 +61,7 @@ export function AbaEstrutura() {
       setCalculos(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [estrutura, lotes, garantia, veiculos, cotasAutomoveis, cotasBidCon, totaisBidCon.credito, creditoTotal, parcelaTotal]);
+  }, [estrutura, lotes, garantia, veiculos, cotasAutomoveis, cotas, usarMultiplasCotas, totaisCotas]);
 
   // Aplicar valores de referência de Promissão se estrutura estiver vazia
   const aplicarValoresReferencia = () => {
@@ -138,8 +122,9 @@ export function AbaEstrutura() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <InputMoney
             label="Crédito da Cota Contemplada"
-            value={estrutura.credito}
+            value={estruturaCalculo.credito}
             onChange={(value) => setEstrutura({ credito: value })}
+            disabled={usarMultiplasCotas && totaisCotas && totaisCotas.credito > 0}
           />
           <InputMoney
             label="Entrada Negociada (descontada do crédito)"
@@ -195,8 +180,9 @@ export function AbaEstrutura() {
           />
           <InputMoney
             label="Parcela Mensal (PMT)"
-            value={estrutura.parcelaMensal}
+            value={estruturaCalculo.parcelaMensal}
             onChange={(value) => setEstrutura({ parcelaMensal: value })}
+            disabled={usarMultiplasCotas && totaisCotas && totaisCotas.parcelaMensal > 0}
           />
           <div>
             <label className="flex items-center gap-2 mb-2">
