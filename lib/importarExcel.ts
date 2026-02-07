@@ -186,11 +186,11 @@ export function importarLotesExcel(
           
           lotes.push({
             id,
-            matricula: matricula || undefined,
+            matricula: matricula || '',
             area: safeNumber(area, 0),
             valorMercado: safeNumber(valorMercado, 0),
             valorVendaForcada: safeNumber(valorVendaForcada, 0),
-            observacoes: observacoes || undefined,
+            observacoes: observacoes || '',
           });
           
           linhasValidas++;
