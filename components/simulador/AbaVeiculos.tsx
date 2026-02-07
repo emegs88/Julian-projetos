@@ -14,8 +14,9 @@ import { formatBRL } from '@/lib/utils';
 import { PoolGlobal } from './PoolGlobal';
 import { InputPercent } from '@/components/ui/InputPercent';
 import { Modal } from '@/components/ui/Modal';
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { veiculosBase, getValorBase } from '@/data/veiculosBase';
+import { sanitizeVehicles, veiculoJaExiste, vehicleKey, encontrarDuplicado } from '@/lib/veiculos/deduplicacao';
 
 export function AbaVeiculos() {
   const {
@@ -42,40 +43,74 @@ export function AbaVeiculos() {
   const [progressFIPE, setProgressFIPE] = useState<{ atual: number; total: number } | null>(null);
   const [showModalResolver, setShowModalResolver] = useState(false);
   const [erroResolver, setErroResolver] = useState<{ veiculoId: string; erro: string; sugestoes?: any[] } | null>(null);
+  const [duplicadosRemovidos, setDuplicadosRemovidos] = useState<number>(0);
+
+  // Sanitizar veículos existentes (remover duplicados) ao montar
+  useEffect(() => {
+    if (veiculos.length > 0) {
+      const { veiculosUnicos, duplicadosRemovidos: removidos } = sanitizeVehicles(veiculos);
+      if (removidos > 0) {
+        setDuplicadosRemovidos(removidos);
+        setVeiculos(veiculosUnicos);
+        console.log(`✅ ${removidos} veículo(s) duplicado(s) removido(s)`);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Executar apenas uma vez ao montar
 
   // Carregar veículos do cliente ao abrir a aba
   useEffect(() => {
-    // Inicializar veículos do catálogo apenas se não existirem no store
+    // Criar Map para deduplicação ao carregar do catálogo
+    const veiculosMap = new Map<string, Veiculo>();
+    
+    // Inicializar veículos do catálogo com deduplicação
     veiculosBase.forEach((vBase) => {
-      const existe = veiculos.find(v => v.id === vBase.id);
-      if (!existe) {
-        const partes = vBase.modelo.split(' ');
-        const marca = partes[0] || '';
-        const modelo = partes.slice(1).join(' ') || vBase.modelo;
-        const multiplicador = 1.3;
-        const garantia = vBase.valorBase * multiplicador;
-        
-        addVeiculo({
-          id: vBase.id,
-          marca,
-          modelo,
-          ano: vBase.ano,
-          placa: '',
-          chassi: '',
-          fipe: vBase.valorBase, // Inicializar com catálogo
-          fipeBase: vBase.valorBase,
-          fipeAtual: undefined,
-          fonteFipe: 'CATALOGO',
-          multiplicador,
-          valorGarantia: garantia,
-          observacoes: `${vBase.tipo} - CATÁLOGO`,
-          selecionado: false,
-        });
+      const partes = vBase.modelo.split(' ');
+      const marca = partes[0] || '';
+      const modelo = partes.slice(1).join(' ') || vBase.modelo;
+      const multiplicador = 1.3;
+      const garantia = vBase.valorBase * multiplicador;
+      
+      const novoVeiculo: Veiculo = {
+        id: vBase.id,
+        marca,
+        modelo,
+        ano: vBase.ano,
+        placa: '',
+        chassi: '',
+        fipe: vBase.valorBase,
+        fipeBase: vBase.valorBase,
+        fipeAtual: undefined,
+        fonteFipe: 'CATALOGO',
+        multiplicador,
+        valorGarantia: garantia,
+        observacoes: `${vBase.tipo} - CATÁLOGO`,
+        selecionado: false,
+      };
+      
+      const key = vehicleKey(novoVeiculo);
+      // Só adicionar se não existir no store nem no map
+      const existeNoStore = veiculos.find(v => vehicleKey(v) === key);
+      if (!existeNoStore && !veiculosMap.has(key)) {
+        veiculosMap.set(key, novoVeiculo);
       }
     });
     
+    // Adicionar veículos únicos do catálogo
+    let duplicadosCatálogo = 0;
+    veiculosMap.forEach((veiculo) => {
+      if (!veiculoJaExiste(veiculo, veiculos)) {
+        addVeiculo(veiculo);
+      } else {
+        duplicadosCatálogo++;
+      }
+    });
+    
+    if (duplicadosCatálogo > 0) {
+      console.log(`⚠️ ${duplicadosCatálogo} veículo(s) do catálogo já existiam no store`);
+    }
+    
     // Depois tentar atualizar pela API (apenas atualizar, não adicionar duplicados)
-    // Usar timeout para evitar race condition
     const timeout = setTimeout(() => {
       carregarVeiculosCliente(true);
     }, 100);
@@ -131,36 +166,39 @@ export function AbaVeiculos() {
         };
       });
 
-      // Atualizar veículos existentes ou adicionar apenas se não existirem
-      // Usar o estado atualizado do store para evitar duplicação
+      // Atualizar veículos existentes ou adicionar apenas se não existirem (usando chave única)
       novosVeiculos.forEach((novo) => {
-        // Verificar no store atual (não no estado antigo)
-        const existe = veiculos.find((v) => v.id === novo.id);
-        if (!existe) {
-          // Adicionar apenas se realmente não existir
+        // Verificar por chave única (modelo + ano) ao invés de apenas ID
+        const existePorChave = veiculos.find((v) => vehicleKey(v) === vehicleKey(novo));
+        const existePorId = veiculos.find((v) => v.id === novo.id);
+        
+        if (!existePorChave && !existePorId) {
+          // Adicionar apenas se realmente não existir (nem por chave nem por ID)
           addVeiculo(novo);
         } else {
-          // Sempre atualizar com dados mais recentes (mesmo que não mudou)
-          // Mas verificar se realmente precisa atualizar para evitar loops
-          const precisaAtualizar = 
-            existe.fipe !== novo.fipe ||
-            existe.fipeBase !== novo.fipeBase ||
-            existe.fipeAtual !== novo.fipeAtual ||
-            existe.fonteFipe !== novo.fonteFipe ||
-            existe.valorGarantia !== novo.valorGarantia;
-          
-          if (precisaAtualizar) {
-            updateVeiculo(novo.id, {
-              fipe: novo.fipe,
-              fipeBase: novo.fipeBase,
-              fipeAtual: novo.fipeAtual,
-              fonteFipe: novo.fonteFipe,
-              mesReferencia: novo.mesReferencia,
-              codigoFipe: novo.codigoFipe,
-              multiplicador: novo.multiplicador,
-              valorGarantia: novo.valorGarantia,
-              observacoes: novo.observacoes,
-            });
+          // Atualizar veículo existente (encontrar por chave ou ID)
+          const veiculoExistente = existePorChave || existePorId;
+          if (veiculoExistente) {
+            const precisaAtualizar = 
+              veiculoExistente.fipe !== novo.fipe ||
+              veiculoExistente.fipeBase !== novo.fipeBase ||
+              veiculoExistente.fipeAtual !== novo.fipeAtual ||
+              veiculoExistente.fonteFipe !== novo.fonteFipe ||
+              veiculoExistente.valorGarantia !== novo.valorGarantia;
+            
+            if (precisaAtualizar) {
+              updateVeiculo(veiculoExistente.id, {
+                fipe: novo.fipe,
+                fipeBase: novo.fipeBase,
+                fipeAtual: novo.fipeAtual,
+                fonteFipe: novo.fonteFipe,
+                mesReferencia: novo.mesReferencia,
+                codigoFipe: novo.codigoFipe,
+                multiplicador: novo.multiplicador,
+                valorGarantia: novo.valorGarantia,
+                observacoes: novo.observacoes,
+              });
+            }
           }
         }
       });
@@ -389,6 +427,16 @@ export function AbaVeiculos() {
         selecionado: false,
       };
 
+      // Verificar duplicado antes de adicionar
+      if (veiculoJaExiste(novoVeiculo, veiculos)) {
+        const duplicado = encontrarDuplicado(novoVeiculo, veiculos);
+        alert(`Veículo já cadastrado: ${duplicado?.marca} ${duplicado?.modelo} (${duplicado?.ano})`);
+        setShowModalBusca(false);
+        setCodigoFipeInput('');
+        setBuscaModelo('');
+        return;
+      }
+
       addVeiculo(novoVeiculo);
       setEditingId(novoVeiculo.id);
       setShowModalBusca(false);
@@ -405,6 +453,18 @@ export function AbaVeiculos() {
   // Selecionar veículo da API FIPE (tabela antiga)
   const handleSelecionarVeiculoFIPE = async (veiculoFIPE: any) => {
     try {
+      // Verificar se já existe antes de adicionar
+      const veiculoTeste = {
+        modelo: `${veiculoFIPE.marca} ${veiculoFIPE.modelo}`,
+        ano: veiculoFIPE.ano,
+      };
+      
+      if (veiculoJaExiste(veiculoTeste, veiculos)) {
+        const duplicado = veiculos.find(v => vehicleKey(v) === vehicleKey(veiculoTeste));
+        alert(`Veículo já cadastrado: ${duplicado?.marca} ${duplicado?.modelo} (${duplicado?.ano})`);
+        return;
+      }
+
       // Calcular garantia via API
       const response = await fetch('/api/garantia', {
         method: 'POST',
@@ -481,16 +541,29 @@ export function AbaVeiculos() {
     }
   };
 
-  // Calcular totais dos veículos selecionados
-  const veiculosSelecionados = veiculos.filter((v) =>
-    garantia.veiculosSelecionados.includes(v.id)
+  // Calcular totais dos veículos selecionados e todos
+  const veiculosSelecionados = useMemo(() => 
+    veiculos.filter((v) => garantia.veiculosSelecionados.includes(v.id)),
+    [veiculos, garantia.veiculosSelecionados]
   );
 
-  const totaisVeiculos = {
-    quantidade: veiculosSelecionados.length,
-    fipeTotal: veiculosSelecionados.reduce((sum, v) => sum + v.fipe, 0),
-    garantiaTotal: veiculosSelecionados.reduce((sum, v) => sum + v.valorGarantia, 0),
-  };
+  const totaisVeiculos = useMemo(() => {
+    const fipeTotalSelecionados = veiculosSelecionados.reduce((sum, v) => {
+      const fipe = (v.fipeAtual ?? v.fipeBase) || v.fipe || 0;
+      return sum + fipe;
+    }, 0);
+    
+    const garantiaTotalSelecionados = veiculosSelecionados.reduce((sum, v) => sum + (v.valorGarantia || 0), 0);
+    
+    const garantiaTotalTodos = veiculos.reduce((sum, v) => sum + (v.valorGarantia || 0), 0);
+    
+    return {
+      quantidade: veiculosSelecionados.length,
+      fipeTotal: fipeTotalSelecionados,
+      garantiaTotal: garantiaTotalSelecionados,
+      garantiaTotalTodos,
+    };
+  }, [veiculosSelecionados, veiculos]);
 
   // Recalcular garantia de todos os veículos quando multiplicador mudar
   const handleMultiplicadorChange = (value: number) => {
@@ -510,6 +583,18 @@ export function AbaVeiculos() {
       
       <Card title="Veículos - Garantia por FIPE">
         <div className="space-y-4">
+          {/* Mensagem de duplicados removidos */}
+          {duplicadosRemovidos > 0 && (
+            <Alert variant="info" className="bg-blue-50 border-blue-300">
+              <p className="font-semibold text-blue-800">
+                Duplicados removidos: {duplicadosRemovidos} veículo(s)
+              </p>
+              <p className="text-sm text-blue-700 mt-1">
+                Veículos duplicados foram removidos automaticamente. Mantido o veículo com maior prioridade de fonte (API → Manual → Catálogo).
+              </p>
+            </Alert>
+          )}
+          
           <div className="bg-gray-50 p-4 rounded-lg border border-gray-300">
             <InputPercent
               label="Multiplicador FIPE (%)"
@@ -587,27 +672,36 @@ export function AbaVeiculos() {
             </div>
           </div>
 
-          {/* Card Lateral: GARANTIA VEÍCULOS */}
-          {garantia.usarVeiculos && veiculosSelecionados.length > 0 && (
-            <Card title="GARANTIA VEÍCULOS" className="bg-gradient-to-r from-green-50 to-green-100 border-2 border-green-300">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="bg-white p-4 rounded-lg border-2 border-green-300">
-                  <p className="text-sm text-gray-600 mb-1">Total FIPE</p>
-                  <p className="text-2xl font-bold text-green-700">{formatBRL(totaisVeiculos.fipeTotal)}</p>
-                </div>
-                <div className="bg-white p-4 rounded-lg border-2 border-green-400">
-                  <p className="text-sm text-gray-600 mb-1">Total Garantia</p>
-                  <p className="text-3xl font-bold text-green-800">
-                    {formatBRL(totaisVeiculos.garantiaTotal)}
-                  </p>
-                </div>
-                <div className="bg-white p-4 rounded-lg border-2 border-green-300">
-                  <p className="text-sm text-gray-600 mb-1">Qtd Veículos</p>
-                  <p className="text-2xl font-bold text-green-700">{totaisVeiculos.quantidade}</p>
-                </div>
-              </div>
+          {/* Cards de Somatório */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <Card title="Total FIPE (Selecionados)" className="bg-blue-50 border-2 border-blue-300">
+              <p className="text-2xl font-bold text-blue-700">{formatBRL(totaisVeiculos.fipeTotal)}</p>
+              <p className="text-xs text-gray-600 mt-1">
+                {totaisVeiculos.quantidade} veículo(s) selecionado(s)
+              </p>
             </Card>
-          )}
+            
+            <Card title="Total Garantia (Selecionados)" className="bg-green-50 border-2 border-green-400">
+              <p className="text-3xl font-bold text-green-800">{formatBRL(totaisVeiculos.garantiaTotal)}</p>
+              <p className="text-xs text-gray-600 mt-1">
+                {totaisVeiculos.quantidade} veículo(s) selecionado(s)
+              </p>
+            </Card>
+            
+            <Card title="Quantidade Selecionada" className="bg-purple-50 border-2 border-purple-300">
+              <p className="text-3xl font-bold text-purple-700">{totaisVeiculos.quantidade}</p>
+              <p className="text-xs text-gray-600 mt-1">
+                de {veiculos.length} veículo(s) cadastrado(s)
+              </p>
+            </Card>
+            
+            <Card title="Total Garantia (Todos)" className="bg-gray-50 border-2 border-gray-300">
+              <p className="text-2xl font-bold text-gray-700">{formatBRL(totaisVeiculos.garantiaTotalTodos)}</p>
+              <p className="text-xs text-gray-600 mt-1">
+                Todos os {veiculos.length} veículo(s) cadastrado(s)
+              </p>
+            </Card>
+          </div>
 
           {loadingVeiculosCliente && veiculos.length === 0 ? (
             <Alert variant="info">
